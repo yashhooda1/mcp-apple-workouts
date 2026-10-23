@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "apple-workouts": {
+      "command": "apple-workouts-mcp",
+      "env": {
+        "TRANSPORT": "stdio",
+        "STRAVA_CLIENT_ID": "<your app id>",
+        "STRAVA_CLIENT_SECRET": "<your app secret>"
+      }
+    }
+  }
+}

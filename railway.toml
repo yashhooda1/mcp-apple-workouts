@@ -1,0 +1,11 @@
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+startCommand = "apple-workouts-mcp"
+restartPolicyType = "ON_FAILURE"
+
+# Set in Railway dashboard (Variables), and attach a volume at /data:
+#   MCP_AUTH_TOKEN=<openssl rand -hex 32>    (required — gates /mcp, /feed.json, /status)
+#   STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET  (optional, for history)
+# Run `apple-workouts-strava-auth` locally, then upload strava_tokens.json to /data.
