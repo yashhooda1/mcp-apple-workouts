@@ -81,7 +81,10 @@ def test_interval_compiler_and_rest_modes(store, style):
     assert recovery["step"]["display_name"] == (
         "Standing rest" if style == "standing" else "Easy jog"
     )
-    assert recovery["step"]["alert"] is (None if style == "standing" else not None)
+    if style == "standing":
+        assert recovery["step"]["alert"] is None
+    else:
+        assert recovery["step"]["alert"]["type"] == "hr_zone"
 
 
 @pytest.mark.parametrize("bad", [
