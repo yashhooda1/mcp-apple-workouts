@@ -117,8 +117,10 @@ def _run_spec(options: dict) -> tuple[str, WorkoutSpec]:
 
         if pace_to_mps(fast) < pace_to_mps(slow):
             raise SiriRequestError("Fast pace must be faster than slow pace")
-        if not 3 * 60 <= int(fast.split(":")[0]) * 60 + int(fast.split(":")[1]) <= 20 * 60:
-            raise SiriRequestError("Work pace must be in a realistic training range")
+        fast_seconds = int(fast.split(":")[0]) * 60 + int(fast.split(":")[1])
+        slow_seconds = int(slow.split(":")[0]) * 60 + int(slow.split(":")[1])
+        if not 3 * 60 <= fast_seconds <= slow_seconds <= 20 * 60:
+            raise SiriRequestError("Work pace must be between 3:00 and 20:00 per mile")
         style = options.get("recovery_style", "jog")
         if style not in ("jog", "standing"):
             raise SiriRequestError("Recovery style must be jog or standing")
