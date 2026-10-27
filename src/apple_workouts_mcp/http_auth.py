@@ -56,6 +56,14 @@ def serve_http(mcp, transport: str, host: str, port: int, token: str | None,
 
         app = FeedRoutes(app, store)   # inside the gate: same bearer token
 
+    # Refuse unauthenticated Internet-facing transports. Loopback can be used
+    # by trusted local clients (for example a secure MCP tunnel).
+    if not token and host not in ("127.0.0.1", "::1", "localhost"):
+        raise ValueError(
+            "Refusing to expose writable MCP/WorkoutKit feed without MCP_AUTH_TOKEN. "
+            "Set MCP_AUTH_TOKEN or bind HOST=127.0.0.1 for local development."
+        )
+
     if token:
         app = BearerAuthMiddleware(app, token)
         logger.info("HTTP transport secured with bearer token.")
