@@ -2,10 +2,10 @@
 
 Tools (least-privilege):
   read   — list_activities, assess_fitness, list_scheduled, sync_status,
-           preview_workout, list_marathons, pick_random_marathon
+           preview_workout, list_marathons, pick_random_marathon,\n           list_texas_races, build_meal_grocery_plan
   write  — create_workout, create_strength_workout, unschedule_workout,
            clear_scheduled
-  plan   — create_training_plan, create_marathon_plan, create_hs_track_plan
+  plan   — create_training_plan, create_marathon_plan, create_road_race_plan,\n           create_hs_track_plan
 
 Writes go to the workout feed (see feed.py), never to a cloud account. HoodaRun
 on the iPhone turns the feed into WorkoutKit workouts and schedules them onto
@@ -239,6 +239,39 @@ def create_marathon_plan(race_name: str, race_date: str, goal_time: str,
 
 
 @mcp.tool()
+def create_road_race_plan(distance: str, goal_time: Optional[str] = None,
+                          weeks: int = 16, start_date: Optional[str] = None,
+                          race_date: Optional[str] = None,
+                          current_weekly_miles: float = 30.0,
+                          days_per_week: int = 5,
+                          benchmark_time: Optional[str] = None,
+                          benchmark_distance: Optional[str] = None,
+                          heat_penalty_s_per_mile: float = 0.0,
+                          time: Optional[str] = None,
+                          replace: bool = True, dry_run: bool = True) -> dict:
+    """Adult mile (sub-5), 5K (sub-17), or half (sub-1:20) training block.
+
+    Example: distance='5k', goal_time='16:59', benchmark_time='18:15',
+    benchmark_distance='5k', current_weekly_miles=35. Marathon training uses
+    create_marathon_plan(goal_time='2:59:59'). Schedules strength alongside
+    runs; training paces use a measured benchmark when supplied. dry_run=True
+    previews before any Watch feed changes. Requires 8-30 weeks, at least
+    18 current weekly miles, and a Monday start.
+    """
+    from .road import build_road_plan
+
+    plan, report = build_road_plan(
+        distance=distance, goal_time=goal_time, weeks=weeks,
+        start_date=start_date, race_date=race_date,
+        current_weekly_miles=current_weekly_miles,
+        days_per_week=days_per_week, benchmark_time=benchmark_time,
+        benchmark_distance=benchmark_distance,
+        heat_penalty_s_per_mile=heat_penalty_s_per_mile,
+    )
+    return _finish(plan, report, replace, dry_run, time)
+
+
+@mcp.tool()
 def create_hs_track_plan(event: str = "1600", goal_time: Optional[str] = None,
                          weeks: int = 16, start_date: Optional[str] = None,
                          current_pr: Optional[str] = None,
@@ -283,6 +316,38 @@ def pick_random_marathon(min_weeks_out: int = 16, max_weeks_out: int = 104,
     return random_race(min_weeks_out, max_weeks_out, seed=seed) or {
         "error": "no races in that window"
     }
+
+
+@mcp.tool()
+def build_meal_grocery_plan(diet: str = "lacto_vegetarian",
+                            training_load: str = "high", servings: int = 1,
+                            long_run_day: str = "Sunday") -> dict:
+    """Seven easy-cook plant-forward runner menus with consolidated groceries.
+
+    diet='vegan', 'lacto_vegetarian' or 'vegetarian'. Returns shopping
+    suggestions only: does NOT purchase or access any grocery account.
+    Meals emphasize carbs around quality days, accessible protein and B12.
+    """
+    from .nutrition import meal_plan
+
+    return meal_plan(diet=diet, training_load=training_load, servings=servings,
+                     long_run_day=long_run_day)
+
+
+@mcp.tool()
+def list_texas_races(area: Optional[str] = None, distance: Optional[str] = None,
+                     after: Optional[str] = None,
+                     include_unscheduled: bool = True) -> dict:
+    """Curated Texas race calendar: Austin, Dallas/Fort Worth or Houston.
+
+    Includes real organizer URLs and published 2026/27 dates only. Does NOT
+    hallucinate next year's dates from a recurring weekend assumption.
+    Filter by area and race distance ('5K', '10K', 'half marathon', etc.).
+    """
+    from .texas_races import texas_race_calendar
+
+    return texas_race_calendar(area=area, distance=distance, after=after,
+                               include_unscheduled=include_unscheduled)
 
 
 # --------------------------------------------------------------------------- #
