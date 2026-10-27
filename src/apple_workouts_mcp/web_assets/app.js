@@ -239,6 +239,12 @@ function renderPreview(target, data, request) {
     "Approval required · Preview valid for 15 minutes · iPhone sync required"));
   target.append(publish);
 }
+function invalidatePreview(output) {
+  const button = output.querySelector(".publish-controls button");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  button.textContent = "Inputs changed — preview again";
+}
 function changePlanDistance() {
   const dist = $("#plan-distance").value;
   $("#plan-goal").value = GOALS[dist];
@@ -428,6 +434,7 @@ function install() {
     show("plans");
     $("#plan-distance").value = button.dataset.goal;
     changePlanDistance();
+    invalidatePreview($("#plan-output"));
     $("#plan-goal").focus();
   }));
   $("#open-connection").addEventListener("click", () => connectionDialog(true));
@@ -491,6 +498,14 @@ function install() {
     try { await refreshOverview(); toast("Schedule refreshed."); }
     catch (error) { toast(error.message, true); }
   });
+  for (const [formId, outputId] of [
+    ["plan-form", "plan-output"], ["workout-form", "workout-output"],
+    ["strength-form", "strength-output"]
+  ]) {
+    for (const type of ["input", "change"]) {
+      $("#" + formId).addEventListener(type, () => invalidatePreview($("#" + outputId)));
+    }
+  }
   changePlanDistance();
   showWorkoutType();
   // Local loopback can work anonymously; an authenticated deployment asks
