@@ -347,6 +347,33 @@ actor MCPPlanSync {
         let errors: [String]
     }
 
+    /// Read the same feed/CloudKit sources as the WorkoutKit sync, without
+    /// writing or requesting WorkoutKit authorization. Safe for a Siri query.
+    func nextPlannedWorkoutSummary() async throws -> String {
+        let day = Self.isoDay(Date())
+        var incoming: [MCPFeedWorkout] = []
+        if let source = MCPSyncSettings.source() {
+            let feed = try JSONDecoder().decode(MCPFeed.self, from: try await source.readFeed())
+            guard feed.schema == "hooda.workouts.feed/v1" else {
+                throw MCPSyncError.badSchema(feed.schema)
+            }
+            incoming += feed.workouts
+        }
+        if CloudKitPlanStore.isEnabled, await CloudKitPlanStore.accountAvailable() {
+            let cloud = try await CloudKitPlanStore.upcoming(from: day)
+            incoming += cloud.map { $0.item }
+        }
+        guard let next = incoming.filter({ $0.date >= day })
+            .sorted(by: { ($0.date, $0.time ?? "") < ($1.date, $1.time ?? "") }).first
+        else {
+            return "No upcoming workouts yet. Add a plan in HoodaRun."
+        }
+        // "Planned" is intentionally distinct from "confirmed on the Watch".
+        // The WorkoutKit scheduler is not queried as part of this read intent.
+        return "Your next planned workout is \(next.name) on \(next.date). " +
+            "Open HoodaRun to check whether it is synced to Apple Watch."
+    }
+
     private var running = false
 
     /// Safe to call often (app launch, scenePhase .active, a "Sync now" button).
