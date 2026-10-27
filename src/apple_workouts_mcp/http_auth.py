@@ -62,6 +62,9 @@ def serve_http(mcp, transport: str, host: str, port: int, token: str | None,
         from .feed_http import FeedRoutes
 
         app = FeedRoutes(app, store)   # inside the gate: same bearer token
+        from .siri import SiriRoutes
+
+        app = SiriRoutes(app, store)   # private /api/siri voice bridge
         from .web_app import WebRoutes
 
         app = WebRoutes(app, store)  # app shell public; API inside the gate

@@ -44,6 +44,28 @@ Watch. HoodaRun on your paired **iPhone remains necessary** to turn the
 shared JSON feed into scheduled Apple Watch workouts. Publishing to the feed
 is not the same as confirming a workout on the Watch.
 
+## Siri AI / Apple Intelligence / Shortcuts
+
+HoodaRun also exposes typed **Siri AI / Apple Shortcuts** actions through
+Apple's **App Intents**, with a safe private bridge to the same workout feed
+used by Claude and OpenAI MCP tools. **Siri is not a native generic MCP
+client**: App Intents are the supported Apple integration path.
+
+Features include next-workout lookup (local iCloud or CloudKit), requesting
+an iPhone-to-Watch sync, previewing and confirming new easy runs or
+interval sessions (including standing vs jogging rest), querying Texas
+races and getting simple plant-based meal ideas.
+
+Add `ios/HoodaRun/HoodaRunSiriIntents.swift` to the HoodaRun iPhone app
+target. For actions that reach the Python server, configure HTTPS plus
+`MCP_AUTH_TOKEN` under HoodaRun's existing Remote Server settings.
+Voice-created workouts require an explicit confirmation before they are
+published. The new `POST /api/siri` endpoint is protected by the same
+bearer-token middleware as MCP and the feed.
+
+**[Read the Siri AI integration guide](docs/siri-ai.md)** for setup,
+supported phrases, and the iOS 27/watchOS 27 hardware testing limitations.
+
 ## How it reaches the Watch
 
 Apple has no cloud API that writes to a Watch. Structured workouts get there
