@@ -14,11 +14,10 @@ import time
 from datetime import date
 from importlib.resources import files
 from typing import Any
-from urllib.parse import parse_qs
 
 from pydantic import ValidationError
 
-from .apple import compile_any, parse_spec, step_count
+from .apple import parse_spec, step_count
 from .feed import FeedStore
 from .nutrition import meal_plan
 from .plans import TrainingPlan, feed_item, preview_plan, push_plan
@@ -33,6 +32,7 @@ PREVIEW_TTL_SECONDS = 15 * 60
 _PREVIEW_SECRET = secrets.token_bytes(32)
 
 PUBLIC_WEB_PATHS = {
+    "/": "index.html",
     "/app": "index.html",
     "/app/": "index.html",
     "/app/app.css": "app.css",
@@ -101,6 +101,11 @@ def _build(payload: dict) -> tuple[TrainingPlan | None, dict, dict | None]:
             raise ValueError("Unknown marathon plan option")
         if "current_weekly_miles" not in p:
             raise ValueError("Enter current weekly mileage before building a marathon block")
+        race_date = date.fromisoformat(p["race_date"])
+        start = date.fromisoformat(p["start_date"]) if p.get("start_date") else date.today()
+        span = (race_date - start).days
+        if not 7 * 7 <= span <= 30 * 7:
+            raise ValueError("Marathon race must be 8 to 30 weeks after the plan start")
         plan, report = build_marathon_plan(**p)
         # No implicit Strava or server-side athlete history lookups from web.
     elif kind == "workout":
