@@ -4,8 +4,8 @@
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![license: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-An [MCP](https://modelcontextprotocol.io) server that lets Claude (or any MCP
-client) **build structured runs, strength sessions and multi-week training
+An [MCP](https://modelcontextprotocol.io) server that lets Claude, OpenAI Agents, ChatGPT (where custom MCP is available), or any MCP
+client **build structured runs, strength sessions and multi-week training
 plans and put them on your Apple Watch** — the Apple counterpart to
 [mcp-garmin](https://github.com/yashhooda1/mcp-garmin).
 
@@ -21,7 +21,7 @@ Apple has no cloud API that writes to a Watch. Structured workouts get there
 through **WorkoutKit**, which only runs on the iPhone. So the work is split:
 
 ```
-Claude ──MCP──▶ apple-workouts-mcp ──writes──▶ workouts.json
+AI MCP client ──MCP──▶ apple-workouts-mcp ──writes──▶ workouts.json
                                                    │  (iCloud Drive, or GET /feed.json)
                                                    ▼
                                   HoodaRun (iPhone) ── WorkoutKit ──▶ Apple Watch
@@ -61,6 +61,35 @@ On a Mac the feed defaults to **iCloud Drive › HoodaRun › MCP**
 Choose feed folder…** and pick that folder once. HoodaRun syncs on launch and
 from **Sync now**.
 
+### OpenAI / ChatGPT + advanced runner tools
+
+The server speaks standard MCP, so it works with more than Claude. This
+branch adds **OpenAI Agents SDK (local stdio)** and **OpenAI Responses API
+(remote HTTP)** examples. ChatGPT custom MCP connections depend on your
+workspace and supported authentication or a Secure MCP Tunnel; a local
+`stdio` server cannot be plugged straight into ChatGPT on the web.
+
+See **[OpenAI/ChatGPT setup and security](docs/openai-chatgpt.md)** for the
+working example commands, authentication caveats, and watchOS limitations.
+
+Additional planning tools cover an **adult sub-5 mile**, **sub-17 5K**,
+**sub-1:20 half** and the existing **sub-3 marathon** generator. Road plans
+use your current mileage and optional recent time-trial benchmark rather than
+assuming a stretch goal already equals current fitness.
+
+```text
+create_road_race_plan(distance="5k", goal_time="16:59",
+    current_weekly_miles=35, benchmark_time="18:15",
+    benchmark_distance="5k", weeks=16, dry_run=True)
+build_meal_grocery_plan(diet="lacto_vegetarian", training_load="high")
+list_texas_races(area="Austin", distance="5K")
+```
+
+The meal planner returns seven quick-cook menus, grocery categories and
+plant-based B12/iron guidance. The race calendar uses published 2026–27
+organizer dates and URLs for Austin, Dallas/Fort Worth and Houston; it does
+not pretend to fetch live registration inventory or infer future annual dates.
+
 ### Optional: Strava history
 
 1. Create an API app at https://www.strava.com/settings/api (callback domain
@@ -94,13 +123,13 @@ In HoodaRun use **Remote server (HTTP)** with your `https://` host and token
 | `list_scheduled` | read | Feed workouts, each flagged `on_watch` from HoodaRun's report |
 | `sync_status` | read | Last HoodaRun sync: scheduled, pending, errors |
 | `preview_workout` | read | The exact WorkoutKit-shaped JSON for a spec |
-| `list_marathons` / `pick_random_marathon` | read | Race catalogue |
+| `list_marathons` / `pick_random_marathon` | read | International marathon catalogue |\n| `list_texas_races` | read | Organizer-linked dated Texas road races (Austin/DFW/Houston) |\n| `build_meal_grocery_plan` | read | Seven-day plant-based meals + consolidated groceries |
 | `create_workout` | write | Structured run on a date (optional time, indoor/outdoor) |
 | `create_strength_workout` | write | Guided strength/core session on a date |
 | `unschedule_workout` | write | Remove one workout by id |
 | `clear_scheduled` | write | Remove a date range (dry-run first) |
 | `create_training_plan` | plan | Publish a plan you wrote — runs and lifts, by date |
-| `create_marathon_plan` | plan | Any race, any goal — built from your actual fitness |
+| `create_marathon_plan` | plan | Any marathon, including sub-3, scaled to available fitness |\n| `create_road_race_plan` | plan | Advanced mile, 5K, half race-specific plan (dry-run by default) |
 | `create_hs_track_plan` | plan | High-school 800 / 1600 / 3200 / 5K blocks |
 
 Every generated plan schedules **two strength/core sessions a week** and returns
@@ -160,6 +189,17 @@ One-time setup in [CloudKit Console](https://icloud.developer.apple.com):
 5. API Access › new **web API token**, sign-in callback/allowed origin
    `https://yashhooda.ai`. Paste it into `CK.apiToken` in the site section;
    until then the builder runs in preview mode (build + copy JSON, no sign-in).
+
+## Apple Watch Ultra 4 / watchOS 27 notes
+
+WorkoutKit schedules **via the iPhone companion**, not from a Python process
+running on the Watch. The JSON schema is watch-model neutral. Ultra 4/watchOS
+27 are target devices, **not hardware verified in this repository**; a paired
+iPhone, signed HoodaRun app and actual device tests are required.
+
+The local server never directly reads Apple Health or touches a watch without
+the app syncing. Published feed items may remain pending due to WorkoutKit's
+schedule cap. See [platform details](docs/openai-chatgpt.md#apple-watch-compatibility--limitations).
 
 ## HoodaRun integration
 

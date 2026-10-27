@@ -1,0 +1,21 @@
+# Python and local test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Secrets and app-local workout history
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+strava_tokens.json
+workouts.json
+status.json
+local_feed/
