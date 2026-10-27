@@ -26,6 +26,13 @@ class BearerAuthMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        # Static app shell contains no private data. Every API, feed and MCP
+        # route still requires the same bearer token as before.
+        if scope.get("method") == "GET" and scope.get("path") in (
+            "/", "/app", "/app/", "/app/app.css", "/app/app.js"
+        ):
+            await self.app(scope, receive, send)
+            return
         headers = dict(scope.get("headers") or [])
         provided = headers.get(b"authorization", b"").decode()
         if not (provided and hmac.compare_digest(provided, self._expected)):
@@ -55,6 +62,9 @@ def serve_http(mcp, transport: str, host: str, port: int, token: str | None,
         from .feed_http import FeedRoutes
 
         app = FeedRoutes(app, store)   # inside the gate: same bearer token
+        from .web_app import WebRoutes
+
+        app = WebRoutes(app, store)  # app shell public; API inside the gate
 
     # Refuse unauthenticated Internet-facing transports. Loopback can be used
     # by trusted local clients (for example a secure MCP tunnel).

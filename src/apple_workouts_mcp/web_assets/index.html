@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0a0f1d">
+  <meta name="description" content="HoodaRun: structured running workouts, race plans, strength, plant-based nutrition, and Texas races for Apple Watch athletes.">
+  <title>HoodaRun • Training Command Center</title>
+  <link rel="stylesheet" href="/app/app.css">
+  <script src="/app/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Sidebar">
+      <div class="brand"><div class="brand-mark" aria-hidden="true">H<span>↗</span></div><div><strong>hooda<span>run</span></strong><small>ATHLETE STUDIO</small></div></div>
+      <div class="sidebar-divider"></div>
+      <p class="nav-caption">YOUR STUDIO</p>
+      <nav class="navigation" aria-label="Main navigation">
+        <button class="nav-link is-current" data-view="dashboard" aria-current="page"><span class="nav-icon">◫</span>Overview</button>
+        <button class="nav-link" data-view="plans"><span class="nav-icon">◎</span>Training plans</button>
+        <button class="nav-link" data-view="workouts"><span class="nav-icon">⌁</span>Workout builder</button>
+        <button class="nav-link" data-view="strength"><span class="nav-icon">◇</span>Strength studio</button>
+        <button class="nav-link" data-view="nutrition"><span class="nav-icon">♧</span>Fuel & groceries</button>
+        <button class="nav-link" data-view="races"><span class="nav-icon">⚑</span>Texas races</button>
+        <button class="nav-link" data-view="schedule"><span class="nav-icon">▦</span>Watch schedule</button>
+      </nav>
+      <div class="side-spacer"></div>
+      <div class="watch-note"><span class="signal">●</span><strong>APPLE WATCH READY</strong><p>Structured workouts transfer through the HoodaRun iPhone companion app.</p><span class="mono">WorkoutKit · iPhone sync</span></div>
+      <div class="sidebar-footer">Designed for the long run. <span>HoodaRun / MCP</span></div>
+    </aside>
+
+    <main class="main-content" id="main">
+      <header class="topbar">
+        <div class="breadcrumb"><span>ATHLETE STUDIO</span><b>/</b><span id="page-title">Overview</span></div>
+        <div class="topbar-right"><span id="connection-status" class="connection-pill"><i></i> Not connected</span><button id="open-connection" class="btn btn-secondary btn-sm" type="button">Connect server</button></div>
+      </header>
+      <div class="page-padding">
+        <section class="view is-visible" id="view-dashboard" aria-labelledby="home-heading">
+          <div class="hero">
+            <div class="hero-content"><div class="eyebrow"><span class="mini-bar"></span> THE ATHLETE CONTROL ROOM</div>
+              <h1 id="home-heading">Train with <em>intention.</em><br>Race with confidence.</h1>
+              <p>Your running, lifting, fueling, and race calendar. Built for runners chasing serious personal bests and powered by your own MCP server.</p>
+              <div class="hero-actions"><button class="btn btn-primary" data-go="plans">Create a training plan <span>↗</span></button><button class="btn btn-quiet" data-go="workouts">Build a workout <span>→</span></button></div>
+            </div>
+            <div class="hero-art" aria-hidden="true">
+              <div class="orbit orbit-outer"></div><div class="orbit orbit-mid"></div><div class="orbit orbit-inner"></div>
+              <div class="orbit-core"><span>HR</span><strong>01</strong></div>
+              <div class="orbit-chip orbit-chip-top">PUSH YOUR LIMITS</div><div class="orbit-chip orbit-chip-bottom">SYNC • TRAIN • REPEAT</div>
+            </div>
+          </div>
+          <div class="section-header"><div><div class="eyebrow">YOUR TRAINING TARGETS</div><h2>Four barriers. One mission.</h2></div><span class="muted text-small">Select a goal to generate a block</span></div>
+          <div class="goal-grid">
+            <button class="goal-tile" data-goal="mile"><span class="goal-icon">01 / MILE</span><strong>4:59<span class="goal-suffix">.xx</span></strong><span>Sub-five-minute mile</span><span class="goal-arrow">↗</span></button>
+            <button class="goal-tile" data-goal="5k"><span class="goal-icon">02 / 5K</span><strong>16:59</strong><span>Break seventeen</span><span class="goal-arrow">↗</span></button>
+            <button class="goal-tile" data-goal="half"><span class="goal-icon">03 / HALF</span><strong>1:19:59</strong><span>Sub-eighty half marathon</span><span class="goal-arrow">↗</span></button>
+            <button class="goal-tile" data-goal="marathon"><span class="goal-icon">04 / MARATHON</span><strong>2:59:59</strong><span>Break three hours</span><span class="goal-arrow">↗</span></button>
+          </div>
+          <div class="section-header"><div><div class="eyebrow">LIVE FROM YOUR FEED</div><h2>Training snapshot</h2></div><button class="text-action" type="button" data-go="schedule">See your schedule →</button></div>
+          <div class="stats-grid">
+            <div class="stat"><small>FEED WORKOUTS</small><strong id="metric-total">—</strong><span>Published sessions</span></div>
+            <div class="stat"><small>UPCOMING</small><strong id="metric-upcoming">—</strong><span>On the calendar</span></div>
+            <div class="stat"><small>CONFIRMED ON WATCH</small><strong id="metric-onwatch">—</strong><span>From iPhone sync</span></div>
+            <div class="stat"><small>LAST COMPANION SYNC</small><strong id="metric-sync" class="small-metric">—</strong><span>Not instant / check status</span></div>
+          </div>
+          <div class="split-row">
+            <div class="panel"><div class="panel-head"><h3>Coming up</h3><span class="chip">NEXT SESSIONS</span></div><div id="dashboard-upcoming" class="stacked-list"><div class="empty-state">Connect your server to see your workouts.</div></div></div>
+            <div class="panel tips-panel"><div class="eyebrow">THE HOODARUN FLOW</div><h3>From a plan to your wrist.</h3>
+              <div class="steps"><div><b>01</b><span><strong>Build</strong><small>Preview a workout or full race plan.</small></span></div><div><b>02</b><span><strong>Publish</strong><small>Approve the plan to write your MCP feed.</small></span></div><div><b>03</b><span><strong>Sync</strong><small>Open HoodaRun on iPhone to schedule with WorkoutKit.</small></span></div></div>
+              <button class="btn btn-secondary btn-sm" data-go="schedule">See sync details →</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-plans" aria-labelledby="plans-title">
+          <div class="section-intro"><div class="eyebrow">BUILT FOR THE START LINE</div><h1 id="plans-title">Your next training block.</h1><p>Evidence-informed structure, measured starting fitness, hard/easy separation, two strength sessions, and room to recover.</p></div>
+          <div class="two-column"><div class="panel">
+            <h3>Build your race plan</h3><p class="muted">Previews are safe and don't change your watch feed.</p>
+            <form id="plan-form" class="form-grid">
+              <label>Distance<select id="plan-distance" name="distance"><option value="5k">5K · sub-17</option><option value="mile">Mile · sub-5</option><option value="half">Half marathon · sub-1:20</option><option value="marathon">Marathon · sub-3</option></select></label>
+              <label>Goal finish time<input id="plan-goal" name="goal_time" value="16:59" required></label>
+              <label>Current weekly miles<input name="mileage" type="number" min="18" max="120" step="0.5" value="35" required></label>
+              <label>Running days per week<select name="days"><option>4</option><option selected>5</option><option>6</option><option>7</option></select></label>
+              <label>Training weeks<input id="plan-weeks" name="weeks" type="number" min="8" max="30" value="16" required></label>
+              <label>Start date (Monday)<input id="plan-start" name="start_date" type="date"></label>
+              <label>Race date <span class="label-hint">(required for marathon)</span><input id="plan-race" name="race_date" type="date"></label>
+              <label class="road-only">Recent benchmark time <span class="label-hint">(optional)</span><input name="benchmark_time" placeholder="18:15"></label>
+              <label class="road-only">Benchmark distance<select name="benchmark_distance"><option value="5k">5K</option><option value="mile">Mile</option><option value="half">Half marathon</option></select></label>
+              <label>Heat adjustment, seconds/mi<input name="heat" type="number" min="0" max="120" step="1" value="0"></label>
+              <button class="btn btn-primary full-width" type="submit">Preview complete plan <span>↗</span></button>
+            </form>
+          </div><div class="panel results-panel" id="plan-output"><div class="result-placeholder"><div class="ghost-icon">◎</div><h3>Your plan takes shape here.</h3><p>Choose your event and training baseline to preview the full workout schedule, progression, and recovery guidance.</p></div></div></div>
+        </section>
+
+        <section class="view" id="view-workouts" aria-labelledby="workouts-title">
+          <div class="section-intro"><div class="eyebrow">CUSTOM WORKOUT LAB</div><h1 id="workouts-title">Make every rep count.</h1><p>Build interval sessions with jogging or standing recoveries, or schedule a simple easy run. Preview the exact WorkoutKit structure before publishing.</p></div>
+          <div class="two-column"><div class="panel"><h3>Structured run builder</h3>
+            <form id="workout-form" class="form-grid">
+              <label class="span-2">Workout name<input name="name" value="5 × 1,000m at 5K pace" maxlength="100" required></label>
+              <label>Scheduled date<input id="workout-date" name="date" type="date" required></label>
+              <label>Workout type<select id="workout-type" name="type"><option value="intervals">Intervals / tempo</option><option value="easy">Easy run</option></select></label>
+              <label class="interval-only">Repetitions<input name="reps" type="number" min="1" max="30" value="5" required></label>
+              <label class="interval-only">Work interval<input name="work" value="1000m" placeholder="400m / 1km / 1mi"></label>
+              <label class="interval-only">Target pace, faster end <span class="label-hint">min/mi</span><input name="pace_fast" value="5:40"></label>
+              <label class="interval-only">Target pace, slower end <span class="label-hint">min/mi</span><input name="pace_slow" value="5:55"></label>
+              <label class="interval-only">Recovery duration<input name="recovery" value="2:00"></label>
+              <label class="interval-only">Recovery style<select name="recovery_kind"><option value="recovery">Easy jogging</option><option value="rest">Standing rest</option></select></label>
+              <label class="easy-only" hidden>Easy-run distance<input name="easy_miles" type="number" min="1" max="35" step="0.5" value="6"></label>
+              <label class="interval-only">Warm-up<input name="warmup" value="15:00"></label>
+              <label class="interval-only">Cooldown<input name="cooldown" value="10:00"></label>
+              <label>Location<select name="location"><option value="outdoor">Outdoor</option><option value="indoor">Indoor / treadmill</option></select></label>
+              <button class="btn btn-primary full-width" type="submit">Preview watch workout <span>↗</span></button>
+            </form>
+          </div><div class="panel results-panel" id="workout-output"><div class="result-placeholder"><div class="ghost-icon">⌁</div><h3>Your intervals, your rules.</h3><p>Choose standing or jogging recoveries and preview the steps that HoodaRun will schedule on Apple Watch.</p></div></div></div>
+        </section>
+
+        <section class="view" id="view-strength" aria-labelledby="strength-title">
+          <div class="section-intro"><div class="eyebrow">RUNNER DURABILITY</div><h1 id="strength-title">Strength that goes the distance.</h1><p>Posterior-chain work, single-leg control, and mobility — scheduled as guided strength sessions on Apple Watch.</p></div>
+          <div class="two-column"><div class="panel"><div class="strength-tiles"><div><span>A / POSTERIOR CHAIN</span><strong>Power & resilience</strong><p>RDLs, split squats, calf raises, and trunk stability.</p></div><div><span>B / HIP CONTROL</span><strong>Form under fatigue</strong><p>Glute activation, lunges, anti-rotation, and balance.</p></div><div><span>C / RECOVERY</span><strong>Mobility reset</strong><p>Lighter strength for deload and taper weeks.</p></div></div>
+            <form id="strength-form" class="form-grid"><label class="span-2">Session<select name="preset"><option value="a">Strength A · posterior chain</option><option value="b">Strength B · hips + core</option><option value="mobility">Strength C · mobility reset</option></select></label><label>Schedule date<input id="strength-date" name="date" type="date" required></label><label>Training phase<select name="phase"><option value="build">Build</option><option value="base">Base</option><option value="specific">Race specific</option><option value="taper">Taper</option></select></label><button class="btn btn-primary full-width" type="submit">Preview strength session ↗</button></form>
+          </div><div class="panel results-panel" id="strength-output"><div class="result-placeholder"><div class="ghost-icon">◇</div><h3>Strong runners last.</h3><p>Choose a session to inspect exercises, sets, and rest intervals.</p></div></div></div>
+        </section>
+
+        <section class="view" id="view-nutrition" aria-labelledby="nutrition-title">
+          <div class="section-intro"><div class="eyebrow">THE FUELING STATION</div><h1 id="nutrition-title">Good miles start in the kitchen.</h1><p>Convenient plant-based meals, low-effort prep, and one consolidated grocery list for the week.</p></div>
+          <form id="nutrition-form" class="filters-bar">
+            <label>Diet<select name="diet"><option value="lacto_vegetarian">Lacto-vegetarian</option><option value="vegan">Vegan</option><option value="vegetarian">Vegetarian</option></select></label><label>Training load<select name="training_load"><option value="high">High mileage</option><option value="moderate">Moderate</option><option value="race_week">Race week</option></select></label><label>Servings<select name="servings"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><label>Long-run day<select name="long_run_day"><option>Sunday</option><option>Saturday</option><option>Friday</option></select></label><button type="submit" class="btn btn-primary">Build menu ↗</button>
+          </form><div id="nutrition-output" class="wide-output"><div class="result-placeholder"><div class="ghost-icon">♧</div><h3>Seven days. One grocery run.</h3><p>Generate quick meals and a categorized shopping list you can copy.</p></div></div>
+        </section>
+
+        <section class="view" id="view-races" aria-labelledby="races-title">
+          <div class="section-intro"><div class="eyebrow">TEXAS RACE FINDER</div><h1 id="races-title">Find your next start line.</h1><p>Curated Austin, Dallas–Fort Worth, and Houston races with organizer links. Dates aren't assumed for future years.</p></div>
+          <form id="race-form" class="filters-bar"><label>Region<select name="area"><option value="">All Texas metros</option><option value="Austin">Austin</option><option value="Dallas">Dallas / Fort Worth</option><option value="Houston">Houston</option></select></label><label>Distance<select name="distance"><option value="">All distances</option><option value="5K">5K</option><option value="10K">10K</option><option value="half marathon">Half marathon</option><option value="marathon">Marathon</option></select></label><button type="submit" class="btn btn-primary">Find races ↗</button></form><div id="race-output" class="race-grid"><div class="empty-state">Connect your server and search races to explore the calendar.</div></div>
+        </section>
+
+        <section class="view" id="view-schedule" aria-labelledby="schedule-title">
+          <div class="section-intro"><div class="eyebrow">PUBLISHED WORKOUT FEED</div><h1 id="schedule-title">Ready when you are.</h1><p>Publishing writes to your MCP feed. Only the iPhone companion can confirm a session has actually reached the Watch.</p></div>
+          <div class="panel"><div class="panel-head"><h3>Your upcoming workouts</h3><button id="refresh-schedule" type="button" class="btn btn-secondary btn-sm">Refresh status ↻</button></div><div id="schedule-output" class="schedule-list"><div class="empty-state">Connect your MCP server to see upcoming sessions.</div></div></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="dialog-backdrop" id="connection-dialog" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="connection-heading">
+      <div class="dialog-top"><span class="chip">PRIVATE CONNECTION</span><button id="close-connection" class="icon-close" aria-label="Close connection dialog">×</button></div>
+      <h2 id="connection-heading">Connect to your MCP server</h2>
+      <p>Use the same bearer token you configured as <code>MCP_AUTH_TOKEN</code>. It stays in this tab's memory only — never in browser storage.</p>
+      <form id="connect-form"><label>Bearer token<input id="server-token" type="password" autocomplete="off" placeholder="Paste your server token" spellcheck="false"></label><p class="muted text-small">Local loopback servers can be used without a token. For remote servers, HTTPS and a configured token are required.</p><button class="btn btn-primary full-width" type="submit">Connect securely →</button></form>
+      <div id="connect-error" class="error-text" role="alert"></div>
+    </div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

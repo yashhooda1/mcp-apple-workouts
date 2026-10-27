@@ -15,6 +15,35 @@ plans and put them on your Apple Watch** — the Apple counterpart to
    →  built, published, scheduled on the Watch by HoodaRun.
 ```
 
+## HoodaRun Web — browser athlete studio
+
+HoodaRun now has a responsive **web dashboard** in the same MCP server,
+accessible from a Mac, PC, iPad or phone. No JavaScript build pipeline or
+third-party frontend service is required. The browser app can preview and
+publish structured running sessions and multiweek plans, strength workouts,
+plant-based meal/grocery lists, a Texas race calendar, and inspect the real
+workout feed and iPhone sync status.
+
+```bash
+pip install -e ".[dev]"
+TRANSPORT=streamable-http HOST=127.0.0.1 PORT=8000 apple-workouts-mcp
+# Open http://127.0.0.1:8000/app
+```
+
+For remote hosting, use **HTTPS**, set `MCP_AUTH_TOKEN` and persistent
+`WORKOUT_FEED_DIR` storage. The website's **Connect server** field accepts
+that same token without saving it in browser storage. The public page has
+no workout data; every browser API action is authenticated and protected.
+Plans always require preview and a separate deliberate publish action.
+
+See **[Website setup and deployment](docs/hoodarun-web.md)** for the routes,
+screens, and security limitations.
+
+**Important:** a website cannot call WorkoutKit or HealthKit on your Apple
+Watch. HoodaRun on your paired **iPhone remains necessary** to turn the
+shared JSON feed into scheduled Apple Watch workouts. Publishing to the feed
+is not the same as confirming a workout on the Watch.
+
 ## How it reaches the Watch
 
 Apple has no cloud API that writes to a Watch. Structured workouts get there

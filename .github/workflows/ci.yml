@@ -2,7 +2,7 @@ name: Python tests
 
 on:
   push:
-    branches: [main, feature/openai-road-nutrition-texas]
+    branches: [main, feature/hoodarun-web-dashboard]
   pull_request:
 
 jobs:
@@ -19,3 +19,4 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: python -m pytest -q
       - run: python -m ruff check .
+      - run: node --check src/apple_workouts_mcp/web_assets/app.js
