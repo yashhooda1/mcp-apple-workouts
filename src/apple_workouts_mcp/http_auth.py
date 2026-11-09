@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 
 logger = logging.getLogger("apple_workouts_mcp.http_auth")
 
@@ -18,9 +19,20 @@ logger = logging.getLogger("apple_workouts_mcp.http_auth")
 class BearerAuthMiddleware:
     """Minimal constant-time bearer check as a pure ASGI wrapper."""
 
-    def __init__(self, app, token: str):
+    def __init__(self, app, token: str | None, oauth=None):
         self.app = app
-        self._expected = f"Bearer {token}"
+        self._expected = f"Bearer {token}" if token else None
+        self._oauth = oauth   # OAuthProvider: also accept its access tokens
+        self._challenge = (
+            f'Bearer resource_metadata="{oauth.base}/.well-known/oauth-protected-resource"'
+            .encode() if oauth else b"Bearer")
+
+    def _allowed(self, provided: str) -> bool:
+        if self._expected and provided and hmac.compare_digest(provided, self._expected):
+            return True
+        if self._oauth and provided[:7].lower() == "bearer ":
+            return self._oauth.verify(provided[7:].strip())
+        return False
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -35,18 +47,17 @@ class BearerAuthMiddleware:
             return
         headers = dict(scope.get("headers") or [])
         provided = headers.get(b"authorization", b"").decode()
-        if not (provided and hmac.compare_digest(provided, self._expected)):
+        if not self._allowed(provided):
             await self._reject(send)
             return
         await self.app(scope, receive, send)
 
-    @staticmethod
-    async def _reject(send):
+    async def _reject(self, send):
         await send({
             "type": "http.response.start",
             "status": 401,
             "headers": [(b"content-type", b"application/json"),
-                        (b"www-authenticate", b"Bearer")],
+                        (b"www-authenticate", self._challenge)],
         })
         await send({"type": "http.response.body", "body": b'{"error":"unauthorized"}'})
 
@@ -77,9 +88,25 @@ def serve_http(mcp, transport: str, host: str, port: int, token: str | None,
             "Set MCP_AUTH_TOKEN or bind HOST=127.0.0.1 for local development."
         )
 
+    oauth = None
+    if token and store is not None:
+        from .oauth import OAuthProvider
+
+        oauth = OAuthProvider.from_env(store.dir, token)
+
     if token:
-        app = BearerAuthMiddleware(app, token)
-        logger.info("HTTP transport secured with bearer token.")
+        app = BearerAuthMiddleware(app, token, oauth=oauth)
+        logger.info("HTTP transport secured with bearer token%s.",
+                    " + OAuth (Claude/ChatGPT connectors)" if oauth else "")
+        if oauth:
+            from .oauth import OAuthRoutes
+
+            app = OAuthRoutes(app, oauth)   # public: discovery, register, sign-in, token
+    if store is not None:
+        from .feed_http import CalendarSubscriptionRoutes
+
+        # Public path, secret URL, read-only: Apple Calendar can't send headers.
+        app = CalendarSubscriptionRoutes(app, store, os.environ.get("CALENDAR_TOKEN"))
     else:
         logger.warning(
             "MCP_AUTH_TOKEN is not set — the HTTP server is UNAUTHENTICATED and can "
