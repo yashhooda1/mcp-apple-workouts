@@ -2,6 +2,7 @@
 
 Tools (least-privilege):
   read   — list_activities, assess_fitness, list_scheduled, sync_status,
+           calendar_subscription,
            preview_workout, list_marathons, pick_random_marathon,\n           list_texas_races, build_meal_grocery_plan
   write  — create_workout, create_strength_workout, unschedule_workout,
            clear_scheduled
@@ -107,6 +108,29 @@ def sync_status() -> dict:
         return {"feed": str(s.feed_path), "status": None,
                 "note": "HoodaRun hasn't synced yet — open the app on the iPhone."}
     return {"feed": str(s.feed_path), **status}
+
+
+@mcp.tool()
+def calendar_subscription() -> dict:
+    """How to see published workouts in Apple Calendar: the webcal:// URL to
+    subscribe to (remote server with CALENDAR_TOKEN set), or the iPhone option
+    (HoodaRun writes events to a "HoodaRun" calendar when it syncs)."""
+    base, token = os.environ.get("PUBLIC_BASE_URL"), os.environ.get("CALENDAR_TOKEN")
+    iphone = ("On the iPhone, turn on HoodaRun › Claude plans › Add to Apple Calendar to "
+              "get editable events in a 'HoodaRun' calendar each time it syncs. Use one "
+              "option or the other, not both, to avoid duplicate events.")
+    if not (base and token):
+        return {"subscription_url": None, "iphone": iphone,
+                "note": "Set PUBLIC_BASE_URL and CALENDAR_TOKEN on the remote server to "
+                        "enable a subscribable calendar feed."}
+    https = f"{base.rstrip('/')}/calendar/{token}.ics"
+    return {"subscription_url": "webcal://" + https.split("://", 1)[1], "https_url": https,
+            "how": "Calendar on Mac: File › New Calendar Subscription. iPhone: Settings › "
+                   "Apps › Calendar › Calendar Accounts › Add Account › Other › "
+                   "Add Subscribed Calendar.",
+            "note": "Read-only. Treat the URL like a password; rotate CALENDAR_TOKEN if "
+                    "it leaks. Apple refreshes subscriptions periodically, not instantly.",
+            "iphone": iphone}
 
 
 @mcp.tool()
