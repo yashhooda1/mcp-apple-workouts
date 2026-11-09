@@ -55,8 +55,11 @@ ChatGPT is not a general local stdio MCP launcher on the web.
   **Secure MCP Tunnel** for a local/private service.
 - Server authentication must be compatible with the connection flow offered
   by ChatGPT (for example, appropriately configured OAuth, or a supported
-  tunnel). **This repo currently supplies only a fixed bearer-token gate** for
-  remote HTTP; do not expose it unauthenticated just to make ChatGPT connect.
+  tunnel). Set `PUBLIC_BASE_URL` to enable the server's built-in **OAuth 2.1**
+  (dynamic registration + PKCE); ChatGPT's `chatgpt.com` callback is on the
+  default redirect allow-list. Sign in with `OAUTH_OWNER_PASSWORD` (default
+  `MCP_AUTH_TOKEN`). See [Calendar and connectors](calendar-and-connectors.md).
+  Never expose the server unauthenticated just to make ChatGPT connect.
 - Depending on ChatGPT plan/workspace policy, custom MCP write actions may be
   unavailable, require approval, or need admin enablement. Access is not
   guaranteed by installing this Python package.

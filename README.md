@@ -161,9 +161,23 @@ routes:
 | `POST /mcp` | Claude | MCP streamable HTTP |
 | `GET /feed.json` | HoodaRun | the workout feed |
 | `POST /status` | HoodaRun | what's scheduled on the Watch |
+| `GET /calendar.ics` | any client with the token | the feed as an iCalendar |
 
 In HoodaRun use **Remote server (HTTP)** with your `https://` host and token
 (stored in the Keychain).
+
+**Claude and ChatGPT connectors (OAuth).** Set `PUBLIC_BASE_URL` to the
+server's https origin and the server also becomes its own OAuth 2.1
+authorization server (discovery, dynamic client registration, PKCE S256,
+rotating refresh tokens). Add `https://<host>/mcp` as a custom connector in
+Claude or ChatGPT and sign in with your server password
+(`OAUTH_OWNER_PASSWORD`, default `MCP_AUTH_TOKEN`). The static token keeps
+working for HoodaRun and Claude Desktop.
+
+**Apple Calendar.** Set `CALENDAR_TOKEN` and subscribe to
+`webcal://<host>/calendar/<CALENDAR_TOKEN>.ics`, or turn on **Add to Apple
+Calendar** in HoodaRun to get editable events each sync. Pick one. See
+**[Calendar and connectors](docs/calendar-and-connectors.md)**.
 
 ## Tools
 
@@ -173,6 +187,7 @@ In HoodaRun use **Remote server (HTTP)** with your `https://` host and token
 | `assess_fitness` | read | Summarise recent training; size the gap to a goal time |
 | `list_scheduled` | read | Feed workouts, each flagged `on_watch` from HoodaRun's report |
 | `sync_status` | read | Last HoodaRun sync: scheduled, pending, errors |
+| `calendar_subscription` | read | Apple Calendar subscription URL and setup |
 | `preview_workout` | read | The exact WorkoutKit-shaped JSON for a spec |
 | `list_marathons` / `pick_random_marathon` | read | International marathon catalogue |\n| `list_texas_races` | read | Organizer-linked dated Texas road races (Austin/DFW/Houston) |\n| `build_meal_grocery_plan` | read | Seven-day plant-based meals + consolidated groceries |
 | `create_workout` | write | Structured run on a date (optional time, indoor/outdoor) |
