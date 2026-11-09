@@ -7,5 +7,8 @@ restartPolicyType = "ON_FAILURE"
 
 # Set in Railway dashboard (Variables), and attach a volume at /data:
 #   MCP_AUTH_TOKEN=<openssl rand -hex 32>    (required — gates /mcp, /feed.json, /status)
+#   PUBLIC_BASE_URL=https://<your-app>.up.railway.app   (enables OAuth for Claude/ChatGPT)
+#   OAUTH_OWNER_PASSWORD=<long passphrase>  (optional — connector sign-in; default MCP_AUTH_TOKEN)
+#   CALENDAR_TOKEN=<openssl rand -hex 24>   (optional — enables /calendar/<token>.ics)
 #   STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET  (optional, for history)
 # Run `apple-workouts-strava-auth` locally, then upload strava_tokens.json to /data.
