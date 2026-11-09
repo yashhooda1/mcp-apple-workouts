@@ -51,6 +51,7 @@ struct MCPCustomWorkout: Codable {
     let warmup: MCPStep?
     let blocks: [MCPBlock]
     let cooldown: MCPStep?
+    let estimated_seconds: Int?   // event length in Apple Calendar
 }
 
 struct MCPBlock: Codable {
@@ -472,6 +473,15 @@ actor MCPPlanSync {
             try? await source.writeStatus(try enc.encode(status))   // reporting is best-effort
         }
         await CloudKitPlanStore.markScheduled(cloudPairs, owned: owned)
+
+        // 4. Mirror into Apple Calendar (opt-in). Never blocks the Watch sync.
+        if MCPCalendarSync.isEnabled {
+            do {
+                _ = try await MCPCalendarSync.shared.sync(upcoming, today: today)
+            } catch {
+                errors.append(.init(id: "calendar", message: error.localizedDescription))
+            }
+        }
 
         return Outcome(scheduled: scheduledCount, removed: removed, pending: pending.count,
                       errors: errors.map(\.message))

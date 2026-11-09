@@ -16,6 +16,7 @@ struct MCPSyncSettingsView: View {
     @State private var message: String?
     @State private var sourceLabel = Self.describe(MCPSyncSettings.source())
     @State private var useCloudKit = CloudKitPlanStore.isEnabled
+    @State private var useCalendar = MCPCalendarSync.isEnabled
 
     var body: some View {
         Form {
@@ -40,6 +41,26 @@ struct MCPSyncSettingsView: View {
                 Text("iCloud")
             } footer: {
                 Text("Workouts you build at yashhooda.ai while signed in with this Apple ID.")
+            }
+
+            Section {
+                Toggle("Add to Apple Calendar", isOn: $useCalendar)
+                    .onChange(of: useCalendar) { _, on in
+                        Task {
+                            if on, !((try? await MCPCalendarSync.shared.requestAccess()) ?? false) {
+                                useCalendar = false
+                                message = "Allow Calendar access for HoodaRun in Settings."
+                                return
+                            }
+                            MCPCalendarSync.isEnabled = on
+                            if on { await runSync() }
+                        }
+                    }
+            } header: {
+                Text("Calendar")
+            } footer: {
+                Text("Synced workouts appear in a \"HoodaRun\" calendar with their steps and paces. "
+                     + "Don't also subscribe to the server's calendar feed, or you'll see doubles.")
             }
 
             Section {
