@@ -326,3 +326,14 @@ def test_tokens_from_before_accounts_belong_to_the_owner(tmp_path):
     p._save({"clients": {}, "codes": {}, "refresh": {},
              "access": {_hash("legacy"): {"client_id": "c", "exp": time.time() + 60}}})
     assert p.verify("legacy") == OWNER and p.verify("unknown") is None
+
+
+def test_a_session_id_does_not_carry_someone_elses_identity(site):
+    """Identity comes from each request's token, never from the MCP session."""
+    c, _ = site
+    erin, finn = _signup(c, "erin@example.com", "Erin"), _signup(c, "finn@example.com", "Finn")
+    session = Mcp(c, erin)
+    session.call("create_workout", spec={**RUN, "name": "Erin run"}, schedule_date="2026-12-03")
+    assert [w["name"] for w in session.call("list_scheduled")["workouts"]] == ["Erin run"]
+    session.h["Authorization"] = f"Bearer {finn}"     # Finn replays Erin's session id
+    assert session.call("list_scheduled")["workouts"] == []
