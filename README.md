@@ -130,6 +130,12 @@ use your current mileage and optional recent time-trial benchmark rather than
 assuming a stretch goal already equals current fitness. Under 18 miles a week
 they switch to a **base tier** for newer or returning runners: one lighter
 quality session a week on 3–4 days (5 mi/week minimum; 10 for a half).
+**Results come back.** With *Share completed workouts* switched on in
+HoodaRun (off by default), the app reports each finished workout's time,
+distance, heart rate and climb from Health — no routes. The server then
+measures your weekly mileage and recent training from your own watch, with no
+Strava connection needed, and uses it when you don't pass a number.
+
 Plans are laid out on **your** week. Save a profile once
 (`update_runner_profile`: weekly mileage, a recent race, which days you run,
 your long-run and workout days, start times for runs and for strength) and the
@@ -203,6 +209,7 @@ HoodaRun app token; nobody can reach anyone else's. See
 | `list_activities` | read | Recent Strava activities |
 | `assess_fitness` | read | Summarise recent training; size the gap to a goal time |
 | `list_scheduled` | read | Feed workouts, each flagged `on_watch` from HoodaRun's report |
+| `list_completed` | read | Workouts actually done, as HoodaRun read them from Health: miles, pace, heart rate |
 | `sync_status` | read | Last HoodaRun sync: scheduled, pending, errors |
 | `get_runner_profile` | read | Saved mileage, recent race, run days, long-run and quality days, start times |
 | `update_runner_profile` | write | Save any of those once so plans stop asking |

@@ -27,8 +27,8 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
+from . import completed, reschedule
 from . import profile as runner_profile
-from . import reschedule
 from .apple import compile_any, parse_spec, step_count
 from .feed import FeedStore
 from .fitness import summarize_fitness
@@ -117,20 +117,56 @@ def list_activities(days: int = 30, limit: int = 30) -> list:
     return strava_list(days=days, limit=limit)
 
 
+MIN_WATCH_RUNS = 3   # fewer than this in the window isn't a training history
+
+
+def _watch_runs(weeks: int) -> list:
+    return [r for r in completed.recent(store(), weeks * 7 + 7) if r["type"] == "Run"]
+
+
 def _snapshot(weeks: int = 8):
+    """Recent training, from the runner's own watch when HoodaRun reports it,
+    otherwise from Strava (which only the server owner has)."""
+    snap, _ = _snapshot_with_source(weeks)
+    return snap
+
+
+def _snapshot_with_source(weeks: int = 8):
+    runs = _watch_runs(weeks)
+    if len(runs) >= MIN_WATCH_RUNS:
+        return summarize_fitness(runs, weeks=weeks), "watch"
+    who = _identity()
+    if who is not None and not who.is_owner:
+        raise ValueError(
+            "There's no training history for this account yet. Turn on \"Share "
+            "completed workouts\" in HoodaRun › Claude plans and sync, or tell me your "
+            "current weekly mileage (current_weekly_miles) and a recent race time. "
+            "Strava is connected for the server owner only.")
     from .strava import list_activities as strava_list
 
-    _require_owner_strava()
+    return summarize_fitness(strava_list(days=weeks * 7 + 7, limit=400), weeks=weeks), "strava"
 
-    return summarize_fitness(strava_list(days=weeks * 7 + 7, limit=400), weeks=weeks)
+
+def _measured_weekly_miles() -> Optional[float]:
+    """Average weekly running miles over the last 4 weeks, when the watch has
+    reported enough to trust (runs in at least 3 of them)."""
+    runs = _watch_runs(4)
+    if len(runs) < MIN_WATCH_RUNS:
+        return None
+    snap = summarize_fitness(runs, weeks=4)
+    if sum(1 for m in snap.weekly_miles if m > 0) < 3:
+        return None
+    return round(snap.avg_weekly_miles, 1)
 
 
 @mcp.tool()
 def assess_fitness(goal_time: Optional[str] = None, race_date: Optional[str] = None,
                    weeks_of_history: int = 8,
                    current_weekly_miles: Optional[float] = None) -> dict:
-    """Read-only: summarise recent training (from Strava), and size the gap to a
-    marathon goal.
+    """Read-only: summarise recent training and size the gap to a marathon goal.
+
+    Uses the runner's own completed workouts when HoodaRun reports them (see
+    list_completed), otherwise the server owner's Strava. `source` says which.
 
     With `goal_time` ('3:15:00') and `race_date` ('2027-04-19') also returns what
     the goal asks for, what a safe ramp reaches, and — when those disagree — the
@@ -138,8 +174,8 @@ def assess_fitness(goal_time: Optional[str] = None, race_date: Optional[str] = N
     """
     from .fitness import assess_gap
 
-    snap = _snapshot(weeks_of_history)
-    out = {"fitness": snap.as_dict()}
+    snap, source = _snapshot_with_source(weeks_of_history)
+    out = {"source": source, "fitness": snap.as_dict()}
     if goal_time and race_date:
         out["assessment"] = assess_gap(
             snap, goal_time, race_date, current_weekly_miles=current_weekly_miles
@@ -163,6 +199,27 @@ def list_scheduled(start_date: Optional[str] = None,
         rows.append(row)
     return {"feed": str(s.feed_path), "count": len(rows), "workouts": rows,
             "last_app_sync": status.get("synced_at")}
+
+
+@mcp.tool()
+def list_completed(days: int = 14) -> dict:
+    """Workouts the runner actually did in the last `days`, as HoodaRun read
+    them from Health: date, type, miles, minutes, pace, heart rate.
+
+    Empty until the runner turns on "Share completed workouts" in HoodaRun ›
+    Claude plans and the app syncs. For how a week compared with the plan, use
+    review_week.
+    """
+    if not 1 <= days <= 400:
+        raise ValueError("days must be between 1 and 400")
+    s = store()
+    rows = completed.recent(s, days)
+    out = {"days": days, "count": len(rows),
+           "workouts": [completed.view(r) for r in reversed(rows)]}
+    if not completed.load(s):
+        out["note"] = ("HoodaRun hasn't reported any completed workouts. In the app: "
+                       "Claude plans › Share completed workouts, then sync.")
+    return out
 
 
 @mcp.tool()
@@ -469,19 +526,25 @@ def create_marathon_plan(race_name: str, race_date: str, goal_time: str,
 
     saved = runner_profile.load(store())
     used = {}
-    if current_weekly_miles is None and saved.weekly_miles is not None:
+    snap = history = None
+    if current_weekly_miles is None and len(_watch_runs(8)) >= MIN_WATCH_RUNS:
+        snap, history = _snapshot_with_source()          # their own recorded runs
+    elif current_weekly_miles is None and saved.weekly_miles is not None:
         current_weekly_miles = used["current_weekly_miles"] = saved.weekly_miles
     if days_per_week is None:
         days_per_week = 5
         if saved.run_days and len(saved.run_days) in DAY_TEMPLATES:
             days_per_week = used["days_per_week"] = len(saved.run_days)
-    snap = _snapshot() if use_strava_history and current_weekly_miles is None else None
+    if snap is None and use_strava_history and current_weekly_miles is None:
+        snap, history = _snapshot_with_source()
     plan, report = build_marathon_plan(
         race_name=race_name, race_date=race_date, goal_time=goal_time,
         snapshot=snap, current_weekly_miles=current_weekly_miles,
         days_per_week=days_per_week, start_date=start_date,
         heat_penalty=heat_penalty_s_per_mile, force_goal=force_goal,
     )
+    if history:
+        report["history_source"] = history
     return _finish(plan, report, replace, dry_run, time, saved, used)
 
 
@@ -521,12 +584,19 @@ def create_road_race_plan(distance: str, goal_time: Optional[str] = None,
 
     saved = runner_profile.load(store())
     used = {}
+    measured = None
     if current_weekly_miles is None:
-        if saved.weekly_miles is None:
+        measured = _measured_weekly_miles()   # what they've actually run beats what's saved
+        if measured is not None and measured >= 5:
+            current_weekly_miles = measured
+        elif saved.weekly_miles is not None:
+            current_weekly_miles = used["current_weekly_miles"] = saved.weekly_miles
+            measured = None
+        else:
             raise ValueError(
                 "I need the runner's current weekly mileage: pass current_weekly_miles, "
-                "or save it once with update_runner_profile(weekly_miles=...).")
-        current_weekly_miles = used["current_weekly_miles"] = saved.weekly_miles
+                "save it once with update_runner_profile(weekly_miles=...), or turn on "
+                "\"Share completed workouts\" in HoodaRun so it can be measured.")
     if days_per_week is None:
         days_per_week = 5
         if saved.run_days:
@@ -544,6 +614,9 @@ def create_road_race_plan(distance: str, goal_time: Optional[str] = None,
         benchmark_distance=benchmark_distance,
         heat_penalty_s_per_mile=heat_penalty_s_per_mile,
     )
+    if measured is not None:
+        report["from_watch"] = {"current_weekly_miles": measured,
+                                "basis": "average of the last 4 weeks of recorded runs"}
     return _finish(plan, report, replace, dry_run, time, saved, used)
 
 

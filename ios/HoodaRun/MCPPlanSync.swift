@@ -205,7 +205,7 @@ enum MCPWorkoutBuilder {
 enum MCPFeedSource {
     /// A folder (usually iCloud Drive/HoodaRun/MCP) picked once by the user.
     case folder(URL)
-    /// The server's HTTP transport: GET /feed.json, POST /status.
+    /// The server's HTTP transport: GET /feed.json, POST /status, POST /completed.
     case http(base: URL, token: String)
 }
 
@@ -231,6 +231,24 @@ private extension MCPFeedSource {
             try Self.coordinatedWrite(data, to: dir.appendingPathComponent("status.json"), in: dir)
         case .http(let base, let token):
             var req = URLRequest(url: base.appendingPathComponent("status"))
+            req.httpMethod = "POST"
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = data
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            guard code == 200 else { throw MCPSyncError.http(code) }
+        }
+    }
+
+    /// Finished workouts from Health (MCPCompletedSync): POST /completed, or
+    /// completed.json beside the feed in the iCloud folder.
+    func writeCompleted(_ data: Data) async throws {
+        switch self {
+        case .folder(let dir):
+            try Self.coordinatedWrite(data, to: dir.appendingPathComponent("completed.json"), in: dir)
+        case .http(let base, let token):
+            var req = URLRequest(url: base.appendingPathComponent("completed"))
             req.httpMethod = "POST"
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -473,6 +491,15 @@ actor MCPPlanSync {
             try? await source.writeStatus(try enc.encode(status))   // reporting is best-effort
         }
         await CloudKitPlanStore.markScheduled(cloudPairs, owned: owned)
+
+        // 3b. Report what was actually done (opt-in). Best-effort, like status.
+        if let source, let done = await MCPCompletedSync.payload() {
+            do {
+                try await source.writeCompleted(done)
+            } catch {
+                errors.append(.init(id: "completed", message: error.localizedDescription))
+            }
+        }
 
         // 4. Mirror into Apple Calendar (opt-in). Never blocks the Watch sync.
         if MCPCalendarSync.isEnabled {
