@@ -26,6 +26,7 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
+from . import reschedule
 from .apple import compile_any, parse_spec, step_count
 from .feed import FeedStore
 from .fitness import summarize_fitness
@@ -99,8 +100,7 @@ def _require_owner_strava() -> None:
 
 
 def _summary(w: dict) -> dict:
-    return {"id": w["id"], "date": w["date"], "time": w.get("time"), "name": w["name"],
-            "sport": w["sport"], "plan": w.get("plan")}
+    return reschedule.brief(w)   # includes planned_date when the workout was moved
 
 
 # --------------------------------------------------------------------------- #
@@ -250,6 +250,54 @@ def unschedule_workout(workout_id: str) -> dict:
     at its next sync."""
     gone = store().remove([workout_id])
     return {"removed": [_summary(w) for w in gone], "found": bool(gone)}
+
+
+@mcp.tool()
+def move_workout(workout_id: str, new_date: str, time: Optional[str] = None) -> dict:
+    """Move one scheduled workout to another day ("move Tuesday's intervals to
+    Thursday"). Get the id from list_scheduled.
+
+    new_date is YYYY-MM-DD; time ('HH:MM', 24h) optionally changes the start
+    time too. The workout keeps its id, so its Apple Calendar event moves
+    rather than being duplicated and the Watch is updated at HoodaRun's next
+    sync. The move sticks if the plan is published again. The reply lists
+    anything else already on that day.
+    """
+    return reschedule.move(store(), workout_id, new_date, time)
+
+
+@mcp.tool()
+def swap_workouts(first_workout_id: str, second_workout_id: str) -> dict:
+    """Trade the days of two scheduled workouts ("swap my long run and
+    Saturday's easy run"). Ids come from list_scheduled."""
+    return reschedule.swap(store(), first_workout_id, second_workout_id)
+
+
+@mcp.tool()
+def shift_plan(days: int, start_date: Optional[str] = None, end_date: Optional[str] = None,
+               plan: Optional[str] = None, move_race: bool = False,
+               dry_run: bool = True) -> dict:
+    """Slide a stretch of the schedule later (days > 0) or earlier (days < 0).
+
+    Moves every workout dated start_date (default today) through end_date
+    (default: everything after). `plan` limits it to plans whose name contains
+    that text. Defaults to dry_run=True; call again with dry_run=False to commit.
+
+    Race-day sessions stay where they are unless move_race=True. Read the
+    reply before committing: `now_on_or_after_race_day` lists sessions that
+    would overrun a race that didn't move, and `doubled_days` lists days left
+    with two runs.
+
+    Which tool for what:
+      * the race was postponed, or training starts a week late with the race
+        moving too -> shift_plan(days=7, move_race=True)
+      * a few days of travel -> shift_plan over just that stretch with
+        end_date, or move_workout for single sessions
+      * time off (illness, injury) before a race that has NOT moved -> don't
+        shift: clear_scheduled the missed days and keep the rest, so the
+        taper still lands before race day.
+    """
+    return reschedule.shift(store(), days, start_date, end_date, plan, move_race, dry_run)
 
 
 @mcp.tool()
