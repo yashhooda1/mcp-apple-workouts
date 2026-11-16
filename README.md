@@ -205,6 +205,9 @@ HoodaRun app token; nobody can reach anyone else's. See
 | `create_strength_workout` | write | Guided strength/core session on a date |
 | `unschedule_workout` | write | Remove one workout by id |
 | `clear_scheduled` | write | Remove a date range (dry-run first) |
+| `move_workout` | write | Move one workout to another day (and optionally time); the calendar event and Watch workout move with it |
+| `swap_workouts` | write | Trade the days of two workouts |
+| `shift_plan` | write | Slide a stretch of the schedule later or earlier; race day stays unless asked (dry-run by default) |
 | `create_training_plan` | plan | Publish a plan you wrote — runs and lifts, by date |
 | `create_marathon_plan` | plan | Any marathon, including sub-3, scaled to available fitness |\n| `create_road_race_plan` | plan | Mile, 5K, 10K or half plan for any goal; base tier for runners under 18 mi/week (dry-run by default) |
 | `create_hs_track_plan` | plan | High-school 800 / 1600 / 3200 / 5K blocks |

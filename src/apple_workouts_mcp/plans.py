@@ -9,6 +9,9 @@ Idempotent: ids are `uuid5(date|name)`, so re-pushing updates in place. With
 replace=True, items from an earlier push of the *same plan name* that are no
 longer in the plan are removed, so an edited plan never leaves ghosts behind.
 
+A session the runner has moved (reschedule.py) keeps its new day when the plan
+is published again.
+
 Generated plans put the goal (and sometimes the race date) in their name, so
 changing either renames the plan. They therefore also declare a `family` — the
 stable part of the name before " — " — and a re-plan replaces what an earlier
@@ -23,6 +26,7 @@ from typing import List, Optional, Tuple, Union
 
 from .apple import compile_any, revision, sport_of, step_count
 from .feed import FeedStore, workout_id
+from .reschedule import keep_moves
 from .strength import StrengthSpec
 from .workouts import WorkoutSpec
 
@@ -122,9 +126,13 @@ def push_plan(store: FeedStore, plan: TrainingPlan, replace: bool = True,
         stale = [w["id"] for w in store.load()["workouts"]
                  if w["id"] not in keep and superseded(w)]
         pruned = store.remove(stale)
+    # Sessions the runner already moved stay on the day they chose.
+    kept = keep_moves(store, items)
     stored = store.upsert(items)
     return {
         "published": len(stored),
+        "kept_moves": [{"name": w["name"], "planned_date": w["moved_from"],
+                        "date": w["date"]} for w in kept],
         "removed_from_previous_push": [{"date": w["date"], "name": w["name"]} for w in pruned],
         "items": [{"date": w["date"], "name": w["name"], "sport": w["sport"], "id": w["id"]}
                   for w in stored],
