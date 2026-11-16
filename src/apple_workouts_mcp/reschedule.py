@@ -103,6 +103,9 @@ def brief(w: dict) -> dict:
            "sport": w["sport"], "plan": w.get("plan")}
     if w.get("moved_from"):
         out["planned_date"] = w["moved_from"]
+    if w.get("adjusted"):
+        out["adjusted"] = {k: w["adjusted"][k] for k in ("action", "was")
+                           if k in w["adjusted"]}
     return out
 
 
