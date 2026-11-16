@@ -130,6 +130,12 @@ use your current mileage and optional recent time-trial benchmark rather than
 assuming a stretch goal already equals current fitness. Under 18 miles a week
 they switch to a **base tier** for newer or returning runners: one lighter
 quality session a week on 3–4 days (5 mi/week minimum; 10 for a half).
+Plans are laid out on **your** week. Save a profile once
+(`update_runner_profile`: weekly mileage, a recent race, which days you run,
+your long-run and workout days, start times for runs and for strength) and the
+road and marathon generators use it for anything you don't pass — instead of
+assuming Tuesday/Thursday workouts and a Sunday long run.
+
 Anything without a generator — ultras, trail, cross country — Claude can
 write session by session with `create_training_plan`.
 
@@ -198,6 +204,8 @@ HoodaRun app token; nobody can reach anyone else's. See
 | `assess_fitness` | read | Summarise recent training; size the gap to a goal time |
 | `list_scheduled` | read | Feed workouts, each flagged `on_watch` from HoodaRun's report |
 | `sync_status` | read | Last HoodaRun sync: scheduled, pending, errors |
+| `get_runner_profile` | read | Saved mileage, recent race, run days, long-run and quality days, start times |
+| `update_runner_profile` | write | Save any of those once so plans stop asking |
 | `calendar_subscription` | read | Apple Calendar subscription URL and setup |
 | `preview_workout` | read | The exact WorkoutKit-shaped JSON for a spec |
 | `list_marathons` / `pick_random_marathon` | read | International marathon catalogue |\n| `list_texas_races` | read | Organizer-linked dated Texas road races (Austin/DFW/Houston) |\n| `build_meal_grocery_plan` | read | Seven-day plant-based meals + consolidated groceries |

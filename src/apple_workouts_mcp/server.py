@@ -25,7 +25,9 @@ import os
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import ValidationError
 
+from . import profile as runner_profile
 from . import reschedule
 from .apple import compile_any, parse_spec, step_count
 from .feed import FeedStore
@@ -213,8 +215,13 @@ def preview_workout(spec: dict) -> dict:
 # write
 # --------------------------------------------------------------------------- #
 def _publish_one(spec, schedule_date: str, time: Optional[str]) -> dict:
+    s = store()
+    if time is None:   # fall back to the runner's usual time for this kind of session
+        saved = runner_profile.load(s)
+        strength = isinstance(spec, StrengthSpec)
+        time = (saved.strength_time if strength else None) or saved.workout_time
     item = feed_item(schedule_date, spec, time=time)
-    stored = store().upsert([item])[0]
+    stored = s.upsert([item])[0]
     return {**_summary(stored), "published": True,
             "note": "HoodaRun schedules it on the Watch at its next sync."}
 
@@ -334,23 +341,113 @@ def create_training_plan(name: str, items: list, time: Optional[str] = None,
     """
     plan = TrainingPlan(name=name,
                         items=[(it["date"], parse_spec(it["spec"])) for it in items])
+    s = store()
+    saved = runner_profile.load(s)
+    time = time or saved.workout_time
     if dry_run:
-        return {"plan": name, "dry_run": True, "sessions": preview_plan(plan, time)}
-    return {"plan": name, **push_plan(store(), plan, replace=replace, time=time)}
+        return {"plan": name, "dry_run": True,
+                "sessions": preview_plan(plan, time, saved.strength_time)}
+    return {"plan": name, **push_plan(s, plan, replace=replace, time=time,
+                                      strength_time=saved.strength_time)}
 
 
-def _finish(plan, report, replace: bool, dry_run: bool, time: Optional[str]) -> dict:
+def _finish(plan, report, replace: bool, dry_run: bool, time: Optional[str],
+            saved=None, used: Optional[dict] = None) -> dict:
+    """Lay the plan on the runner's days and times, then preview or publish."""
+    s = store()
+    saved = saved or runner_profile.load(s)
+    plan, layout = runner_profile.arrange_week(plan, saved)
+    time = time or saved.workout_time
+    report = dict(report)
+    if layout:
+        report["week_layout"] = layout
+    if used:
+        report["from_profile"] = used
     if dry_run:
         return {"plan": plan.name, "dry_run": True,
-                "sessions": preview_plan(plan, time), "report": report}
-    return {"plan": plan.name, **push_plan(store(), plan, replace=replace, time=time),
+                "sessions": preview_plan(plan, time, saved.strength_time), "report": report}
+    return {"plan": plan.name,
+            **push_plan(s, plan, replace=replace, time=time,
+                        strength_time=saved.strength_time),
             "report": report}
+
+
+# --------------------------------------------------------------------------- #
+# runner profile
+# --------------------------------------------------------------------------- #
+def _profile_view(saved) -> dict:
+    return {"profile": saved.model_dump(exclude_none=True), "not_set": saved.missing()}
+
+
+@mcp.tool()
+def get_runner_profile() -> dict:
+    """The runner's saved profile: weekly mileage, a recent race time, which
+    days they run, where the hard sessions and the long run go, and their usual
+    start times. Plan tools use it for anything you don't pass explicitly, so
+    check it before asking the runner questions it already answers. `not_set`
+    lists what a plan would still have to ask for or assume."""
+    return _profile_view(runner_profile.load(store()))
+
+
+@mcp.tool()
+def update_runner_profile(weekly_miles: Optional[float] = None,
+                          recent_race_distance: Optional[str] = None,
+                          recent_race_time: Optional[str] = None,
+                          recent_race_date: Optional[str] = None,
+                          run_days: Optional[list] = None,
+                          quality_days: Optional[list] = None,
+                          long_run_day: Optional[str] = None,
+                          workout_time: Optional[str] = None,
+                          strength_time: Optional[str] = None,
+                          clear: Optional[list] = None) -> dict:
+    """Save what the runner tells you about themselves, so plans stop asking.
+
+    Only the fields you pass change. Days are names ('sat', 'Saturday');
+    times are 24h 'HH:MM'. A recent race needs distance (mile, 5k, 10k, half,
+    marathon) and time, ideally its date. quality_days takes up to two days,
+    the long run day must be a different day, and all of them must be in
+    run_days when run_days is set. `clear` blanks fields by name, e.g.
+    clear=['quality_days'].
+
+    Example: "I run Mon/Tue/Thu/Sat/Sun, long run Saturday, workouts Tuesday
+    and Thursday at 5:45am, lifting at 6pm, about 32 miles a week, ran a 21:40
+    5K on Oct 3" -> weekly_miles=32, run_days=['mon','tue','thu','sat','sun'],
+    long_run_day='sat', quality_days=['tue','thu'], workout_time='05:45',
+    strength_time='18:00', recent_race_distance='5k', recent_race_time='21:40',
+    recent_race_date='2026-10-03'.
+
+    Already-published plans don't move; publish the plan again to lay it out
+    on new days.
+    """
+    changes = {"weekly_miles": weekly_miles, "run_days": run_days,
+               "quality_days": quality_days, "long_run_day": long_run_day,
+               "workout_time": workout_time, "strength_time": strength_time}
+    s = store()
+    if recent_race_distance or recent_race_time or recent_race_date:
+        old = runner_profile.load(s).recent_race
+        race = old.model_dump() if old else {}
+        race.update({k: v for k, v in (("distance", recent_race_distance),
+                                       ("time", recent_race_time),
+                                       ("date", recent_race_date)) if v})
+        if not race.get("distance") or not race.get("time"):
+            raise ValueError("a recent race needs both recent_race_distance and "
+                             "recent_race_time")
+        if recent_race_time and not recent_race_date and old and old.time != recent_race_time:
+            race["date"] = None   # a new result: don't keep the old race's date
+        changes["recent_race"] = race
+    try:
+        saved = runner_profile.update(s, changes, clear)
+    except ValidationError as exc:
+        raise ValueError("; ".join(e["msg"].removeprefix("Value error, ")
+                                   for e in exc.errors()))
+    return {"saved": True, **_profile_view(saved)}
 
 
 @mcp.tool()
 def create_marathon_plan(race_name: str, race_date: str, goal_time: str,
                          current_weekly_miles: Optional[float] = None,
-                         days_per_week: int = 5, start_date: Optional[str] = None,
+                         days_per_week: Optional[int] = None,
+                         start_date: Optional[str] = None,
                          heat_penalty_s_per_mile: float = 0.0,
                          use_strava_history: bool = True,
                          force_goal: bool = False, time: Optional[str] = None,
@@ -364,9 +461,20 @@ def create_marathon_plan(race_name: str, race_date: str, goal_time: str,
     runway, the plan targets the goal that does and says so; `force_goal=True`
     overrides. Two strength sessions a week; weekly fuelling/recovery guidance
     in the report. dry_run=True validates without publishing.
+    
+    Mileage, days per week, start times and the long-run and quality days come
+    from the saved runner profile when not passed (see get_runner_profile).
     """
-    from plans.marathon import build_marathon_plan
+    from plans.marathon import DAY_TEMPLATES, build_marathon_plan
 
+    saved = runner_profile.load(store())
+    used = {}
+    if current_weekly_miles is None and saved.weekly_miles is not None:
+        current_weekly_miles = used["current_weekly_miles"] = saved.weekly_miles
+    if days_per_week is None:
+        days_per_week = 5
+        if saved.run_days and len(saved.run_days) in DAY_TEMPLATES:
+            days_per_week = used["days_per_week"] = len(saved.run_days)
     snap = _snapshot() if use_strava_history and current_weekly_miles is None else None
     plan, report = build_marathon_plan(
         race_name=race_name, race_date=race_date, goal_time=goal_time,
@@ -374,15 +482,15 @@ def create_marathon_plan(race_name: str, race_date: str, goal_time: str,
         days_per_week=days_per_week, start_date=start_date,
         heat_penalty=heat_penalty_s_per_mile, force_goal=force_goal,
     )
-    return _finish(plan, report, replace, dry_run, time)
+    return _finish(plan, report, replace, dry_run, time, saved, used)
 
 
 @mcp.tool()
 def create_road_race_plan(distance: str, goal_time: Optional[str] = None,
                           weeks: int = 16, start_date: Optional[str] = None,
                           race_date: Optional[str] = None,
-                          current_weekly_miles: float = 30.0,
-                          days_per_week: int = 5,
+                          current_weekly_miles: Optional[float] = None,
+                          days_per_week: Optional[int] = None,
                           benchmark_time: Optional[str] = None,
                           benchmark_distance: Optional[str] = None,
                           heat_penalty_s_per_mile: float = 0.0,
@@ -398,12 +506,36 @@ def create_road_race_plan(distance: str, goal_time: Optional[str] = None,
     current_weekly_miles picks the tier: 18+ gets two quality sessions a week
     on 4-7 days; 5 to under 18 gets the base tier for newer or returning
     runners — one lighter quality session, 3-4 days — and days_per_week is
-    trimmed to fit (a half needs at least 10). Schedules strength alongside runs; training paces use a
-    measured benchmark when supplied. dry_run=True previews before any Watch
-    feed changes. Requires 8-30 weeks and a Monday start.
-    """
-    from .road import build_road_plan
+    trimmed to fit (a half needs at least 10). Schedules strength alongside
+    runs; training paces use a measured benchmark when supplied. dry_run=True
+    previews before any Watch feed changes. Requires 8-30 weeks and a Monday
+    start.
 
+    Anything left out comes from the saved runner profile (get_runner_profile):
+    weekly mileage, days per week, a recent race as the benchmark, start times,
+    and which days carry the hard sessions and the long run. The reply's
+    report.from_profile and report.week_layout say what was used. With no
+    mileage passed or saved, this asks for it rather than guessing.
+    """
+    from .road import DISTANCES, build_road_plan
+
+    saved = runner_profile.load(store())
+    used = {}
+    if current_weekly_miles is None:
+        if saved.weekly_miles is None:
+            raise ValueError(
+                "I need the runner's current weekly mileage: pass current_weekly_miles, "
+                "or save it once with update_runner_profile(weekly_miles=...).")
+        current_weekly_miles = used["current_weekly_miles"] = saved.weekly_miles
+    if days_per_week is None:
+        days_per_week = 5
+        if saved.run_days:
+            days_per_week = used["days_per_week"] = min(7, len(saved.run_days))
+    if benchmark_time is None and benchmark_distance is None:
+        recent = saved.benchmark()
+        if recent and recent[1] in DISTANCES:   # a marathon time can't set these paces
+            benchmark_time, benchmark_distance = recent
+            used["benchmark"] = f"{recent[0]} {recent[1]}"
     plan, report = build_road_plan(
         distance=distance, goal_time=goal_time, weeks=weeks,
         start_date=start_date, race_date=race_date,
@@ -412,7 +544,7 @@ def create_road_race_plan(distance: str, goal_time: Optional[str] = None,
         benchmark_distance=benchmark_distance,
         heat_penalty_s_per_mile=heat_penalty_s_per_mile,
     )
-    return _finish(plan, report, replace, dry_run, time)
+    return _finish(plan, report, replace, dry_run, time, saved, used)
 
 
 @mcp.tool()

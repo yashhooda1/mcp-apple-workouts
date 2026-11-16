@@ -387,6 +387,7 @@ def build_marathon_plan(
         name=f"{race_name} — {fmt_hms(build_goal_s)} build",
         items=sorted(items, key=lambda it: it[0]),
         family=race_name,
+        layout={"long": days["long"], "quality": [days["quality"], days["medium"]]},
     )
     report = {
         "race": {"name": race_name, "date": race.isoformat()},
