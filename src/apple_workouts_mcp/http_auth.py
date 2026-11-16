@@ -104,7 +104,30 @@ def serve_http(mcp, transport: str, host: str, port: int, token: str | None,
     """Build the gated app (see build_app) and serve it with uvicorn."""
     import uvicorn
 
-    uvicorn.run(build_app(mcp, transport, host, token, store), host=host, port=port)
+    # Said out loud because a host that routes traffic to a different port than
+    # this one shows a healthy-looking deploy and answers every request 502.
+    logger.info("Listening on %s:%s (PORT=%s). The public domain's target port must "
+                "match.", host, port, os.environ.get("PORT", "unset"))
+    uvicorn.run(HealthRoute(build_app(mcp, transport, host, token, store)),
+                host=host, port=port)
+
+
+class HealthRoute:
+    """GET /healthz -> 200, no auth, no data. Lets the host check that the
+    process is really answering on the port it routes to before it switches
+    traffic to a new deploy (railway.toml: healthcheckPath)."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/healthz":
+            await send({"type": "http.response.start", "status": 200,
+                        "headers": [(b"content-type", b"application/json"),
+                                    (b"cache-control", b"no-store")]})
+            await send({"type": "http.response.body", "body": b'{"ok": true}'})
+            return
+        await self.app(scope, receive, send)
 
 
 def build_app(mcp, transport: str, host: str, token: str | None, store=None):

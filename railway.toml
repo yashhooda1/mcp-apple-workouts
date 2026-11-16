@@ -4,6 +4,14 @@ builder = "DOCKERFILE"
 [deploy]
 startCommand = "apple-workouts-mcp"
 restartPolicyType = "ON_FAILURE"
+# A new deploy only takes traffic once it answers here, so a build that starts
+# but can't be reached is marked failed instead of "successful" with 502s.
+healthcheckPath = "/healthz"
+healthcheckTimeout = 60
+
+# The app listens on $PORT (the Dockerfile's default is 8000). In the service's
+# Settings > Networking, the public domain's target port must be that same
+# port; if they differ every request returns "Application failed to respond".
 
 # Set in Railway dashboard (Variables), and attach a volume at /data:
 #   MCP_AUTH_TOKEN=<openssl rand -hex 32>    (required — gates /mcp, /feed.json, /status)
