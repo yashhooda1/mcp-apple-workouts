@@ -3,7 +3,7 @@
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
-const GOALS = { mile: "4:59", "5k": "16:59", half: "1:19:59", marathon: "2:59:59" };
+const GOALS = { mile: "4:59", "5k": "16:59", "10k": "34:59", half: "1:19:59", marathon: "2:59:59" };
 let bearer = "";
 let connected = false;
 let latestOverview = null;

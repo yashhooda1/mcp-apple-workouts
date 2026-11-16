@@ -12,7 +12,7 @@ from apple_workouts_mcp.texas_races import texas_race_calendar
 
 
 @pytest.mark.parametrize("event,goal", [
-    ("mile", "4:59"), ("5k", "16:59"), ("half", "1:19:59"),
+    ("mile", "4:59"), ("5k", "16:59"), ("10k", "34:59"), ("half", "1:19:59"),
 ])
 def test_road_block_compiles_and_ends_on_race_day(event, goal):
     plan, report = build_road_plan(
@@ -91,3 +91,54 @@ def test_road_plan_with_midweek_race_has_no_workouts_after_race():
         current_weekly_miles=35,
     )
     assert all(day <= report["race"]["date"] for day, _ in plan.items)
+
+
+# ------------------------------------------------------------ 10K + base tier
+def test_10k_has_its_own_sessions_and_aliases():
+    plan, report = build_road_plan("10km", goal_time="45:00", weeks=10,
+                                   start_date="2026-11-02", current_weekly_miles=28)
+    names = [spec.name for _, spec in plan.items]
+    assert report["tier"] == "advanced" and plan.family == "10K"
+    assert any(n.startswith("10K intervals") for n in names)
+    assert any(n.startswith("10K tempo") for n in names)
+    assert plan.items[-1][1].name == "RACE — 10K (45:00)"
+    assert report["goal_pace_per_mile"] == "7:15"
+
+
+@pytest.mark.parametrize("event,goal,miles,days", [
+    ("5k", "30:00", 8, 3), ("10k", "62:00", 12, 4), ("half", "2:20:00", 15, 4),
+    ("mile", "8:30", 6, 3),
+])
+def test_base_tier_is_one_quality_day_and_fewer_days(event, goal, miles, days):
+    plan, report = build_road_plan(event, goal_time=goal, weeks=10,
+                                   start_date="2026-11-02", current_weekly_miles=miles)
+    assert report["tier"] == "base" and report["days_per_week"] == days
+    assert preview_plan(plan)                       # every session compiles
+    assert plan.items[-1][1].name.startswith("RACE")
+    start = date(2026, 11, 2)
+    runs = [(date.fromisoformat(d), s) for d, s in plan.items
+            if not isinstance(s, StrengthSpec)]
+    for week in range(8):                           # build weeks, before the taper
+        this = [s for d, s in runs if (d - start).days // 7 == week]
+        assert len(this) == days
+        hard = [s for s in this if "x" in s.name.split()[-1] or "(taper)" in s.name]
+        assert len(hard) == 1, [s.name for s in this]
+    # nothing in a low-mileage block asks for more than the half's own cap
+    assert report["longest_run_miles"] <= 16
+
+
+def test_base_tier_half_admits_the_long_run_is_short():
+    _, report = build_road_plan("half", goal_time="2:20:00", weeks=10,
+                                start_date="2026-11-02", current_weekly_miles=12)
+    assert report["long_run_note"] and "run/walk" in report["long_run_note"]
+    _, strong = build_road_plan("half", goal_time="1:35:00", weeks=12,
+                                start_date="2026-11-02", current_weekly_miles=35)
+    assert strong["long_run_note"] is None
+
+
+def test_mileage_floor_and_day_limits():
+    with pytest.raises(ValueError, match="5..120"):
+        build_road_plan("5k", weeks=10, start_date="2026-11-02", current_weekly_miles=3)
+    with pytest.raises(ValueError, match="4..7"):
+        build_road_plan("5k", weeks=10, start_date="2026-11-02",
+                        current_weekly_miles=30, days_per_week=3)

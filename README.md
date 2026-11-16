@@ -123,10 +123,15 @@ workspace and supported authentication or a Secure MCP Tunnel; a local
 See **[OpenAI/ChatGPT setup and security](docs/openai-chatgpt.md)** for the
 working example commands, authentication caveats, and watchOS limitations.
 
-Additional planning tools cover an **adult sub-5 mile**, **sub-17 5K**,
-**sub-1:20 half** and the existing **sub-3 marathon** generator. Road plans
+Additional planning tools cover an **adult mile**, **5K**, **10K** and
+**half marathon** for any goal time (defaults: sub-5, sub-17, sub-35,
+sub-1:20) and the existing **marathon** generator. Road plans
 use your current mileage and optional recent time-trial benchmark rather than
-assuming a stretch goal already equals current fitness.
+assuming a stretch goal already equals current fitness. Under 18 miles a week
+they switch to a **base tier** for newer or returning runners: one lighter
+quality session a week on 3–4 days (5 mi/week minimum; 10 for a half).
+Anything without a generator — ultras, trail, cross country — Claude can
+write session by session with `create_training_plan`.
 
 ```text
 create_road_race_plan(distance="5k", goal_time="16:59",
@@ -195,7 +200,7 @@ Calendar** in HoodaRun to get editable events each sync. Pick one. See
 | `unschedule_workout` | write | Remove one workout by id |
 | `clear_scheduled` | write | Remove a date range (dry-run first) |
 | `create_training_plan` | plan | Publish a plan you wrote — runs and lifts, by date |
-| `create_marathon_plan` | plan | Any marathon, including sub-3, scaled to available fitness |\n| `create_road_race_plan` | plan | Advanced mile, 5K, half race-specific plan (dry-run by default) |
+| `create_marathon_plan` | plan | Any marathon, including sub-3, scaled to available fitness |\n| `create_road_race_plan` | plan | Mile, 5K, 10K or half plan for any goal; base tier for runners under 18 mi/week (dry-run by default) |
 | `create_hs_track_plan` | plan | High-school 800 / 1600 / 3200 / 5K blocks |
 
 Every generated plan schedules **two strength/core sessions a week** and returns

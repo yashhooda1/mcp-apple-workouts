@@ -299,14 +299,19 @@ def create_road_race_plan(distance: str, goal_time: Optional[str] = None,
                           heat_penalty_s_per_mile: float = 0.0,
                           time: Optional[str] = None,
                           replace: bool = True, dry_run: bool = True) -> dict:
-    """Adult mile (sub-5), 5K (sub-17), or half (sub-1:20) training block.
+    """Adult mile, 5K, 10K or half-marathon training block for any goal time.
 
-    Example: distance='5k', goal_time='16:59', benchmark_time='18:15',
-    benchmark_distance='5k', current_weekly_miles=35. Marathon training uses
-    create_marathon_plan(goal_time='2:59:59'). Schedules strength alongside
-    runs; training paces use a measured benchmark when supplied. dry_run=True
-    previews before any Watch feed changes. Requires 8-30 weeks, at least
-    18 current weekly miles, and a Monday start.
+    Example: distance='10k', goal_time='44:59', benchmark_time='22:10',
+    benchmark_distance='5k', current_weekly_miles=28. Without goal_time the
+    target is the barrier (sub-5 mile, sub-17 5K, sub-35 10K, sub-1:20 half).
+    Marathon training uses create_marathon_plan.
+
+    current_weekly_miles picks the tier: 18+ gets two quality sessions a week
+    on 4-7 days; 5 to under 18 gets the base tier for newer or returning
+    runners — one lighter quality session, 3-4 days — and days_per_week is
+    trimmed to fit (a half needs at least 10). Schedules strength alongside runs; training paces use a
+    measured benchmark when supplied. dry_run=True previews before any Watch
+    feed changes. Requires 8-30 weeks and a Monday start.
     """
     from .road import build_road_plan
 
