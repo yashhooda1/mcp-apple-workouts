@@ -77,15 +77,15 @@
           <div class="two-column"><div class="panel">
             <h3>Build your race plan</h3><p class="muted">Previews are safe and don't change your watch feed.</p>
             <form id="plan-form" class="form-grid">
-              <label>Distance<select id="plan-distance" name="distance"><option value="5k">5K · sub-17</option><option value="mile">Mile · sub-5</option><option value="half">Half marathon · sub-1:20</option><option value="marathon">Marathon · sub-3</option></select></label>
+              <label>Distance<select id="plan-distance" name="distance"><option value="5k">5K · sub-17</option><option value="mile">Mile · sub-5</option><option value="10k">10K · sub-35</option><option value="half">Half marathon · sub-1:20</option><option value="marathon">Marathon · sub-3</option></select></label>
               <label>Goal finish time<input id="plan-goal" name="goal_time" value="16:59" required></label>
-              <label>Current weekly miles<input name="mileage" type="number" min="18" max="120" step="0.5" value="35" required></label>
+              <label>Current weekly miles<input name="mileage" type="number" min="5" max="120" step="0.5" value="35" required></label>
               <label>Running days per week<select name="days"><option>4</option><option selected>5</option><option>6</option><option>7</option></select></label>
               <label>Training weeks<input id="plan-weeks" name="weeks" type="number" min="8" max="30" value="16" required></label>
               <label>Start date (Monday)<input id="plan-start" name="start_date" type="date"></label>
               <label>Race date <span class="label-hint">(required for marathon)</span><input id="plan-race" name="race_date" type="date"></label>
               <label class="road-only">Recent benchmark time <span class="label-hint">(optional)</span><input name="benchmark_time" placeholder="18:15"></label>
-              <label class="road-only">Benchmark distance<select name="benchmark_distance"><option value="5k">5K</option><option value="mile">Mile</option><option value="half">Half marathon</option></select></label>
+              <label class="road-only">Benchmark distance<select name="benchmark_distance"><option value="5k">5K</option><option value="mile">Mile</option><option value="10k">10K</option><option value="half">Half marathon</option></select></label>
               <label>Heat adjustment, seconds/mi<input name="heat" type="number" min="0" max="120" step="1" value="0"></label>
               <button class="btn btn-primary full-width" type="submit">Preview complete plan <span>↗</span></button>
             </form>
