@@ -184,6 +184,12 @@ working for HoodaRun and Claude Desktop.
 Calendar** in HoodaRun to get editable events each sync. Pick one. See
 **[Calendar and connectors](docs/calendar-and-connectors.md)**.
 
+**More than one runner.** Set `SIGNUP_INVITE_CODE` and people you give the
+code to can create their own account — email and password, or Sign in with
+Apple once its keys are set. Each gets a separate feed, calendar link and
+HoodaRun app token; nobody can reach anyone else's. See
+**[Accounts](docs/accounts.md)**.
+
 ## Tools
 
 | Tool | Access | Description |

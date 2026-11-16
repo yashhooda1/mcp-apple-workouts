@@ -12,6 +12,10 @@ Writes go to the workout feed (see feed.py), never to a cloud account. HoodaRun
 on the iPhone turns the feed into WorkoutKit workouts and schedules them onto
 the Watch. Strava is read-only and optional.
 
+On a hosted server with accounts (accounts.py) every tool acts on the feed of
+whoever signed in to the connector making the call; `store()` resolves that
+from the request. Strava belongs to the server owner only.
+
 Every plan-building tool schedules two strength/core sessions a week and
 returns nutrition and recovery guidance alongside the schedule.
 """
@@ -58,8 +62,40 @@ mcp = FastMCP("apple-workouts-mcp",
               **({"transport_security": _security} if _security else {}))
 
 
+def _request_scope() -> dict:
+    """ASGI scope of the HTTP request behind the current tool call ({} on stdio).
+
+    The streamable-HTTP transport hands each message its own request, so this
+    is the caller of *this* call even when a session outlives one request.
+    """
+    try:
+        request = mcp.get_context().request_context.request
+    except (LookupError, ValueError, AttributeError):
+        return {}
+    return getattr(request, "scope", None) or {}
+
+
 def store() -> FeedStore:
-    return FeedStore()
+    """The caller's feed: their own on a server with accounts, else the default."""
+    from .http_auth import SCOPE_STORE
+
+    return _request_scope().get(SCOPE_STORE) or FeedStore()
+
+
+def _identity():
+    from .http_auth import SCOPE_IDENTITY
+
+    return _request_scope().get(SCOPE_IDENTITY)
+
+
+def _require_owner_strava() -> None:
+    """Strava is one account — the owner's. Never show it to anyone else."""
+    who = _identity()
+    if who is not None and not who.is_owner:
+        raise ValueError(
+            "Strava history is connected for the server owner only. Tell me your "
+            "current weekly mileage (current_weekly_miles) and a recent race time "
+            "instead.")
 
 
 def _summary(w: dict) -> dict:
@@ -75,11 +111,14 @@ def list_activities(days: int = 30, limit: int = 30) -> list:
     """Recent activities from Strava (read-only): id, name, type, start, distance, HR."""
     from .strava import list_activities as strava_list
 
+    _require_owner_strava()
     return strava_list(days=days, limit=limit)
 
 
 def _snapshot(weeks: int = 8):
     from .strava import list_activities as strava_list
+
+    _require_owner_strava()
 
     return summarize_fitness(strava_list(days=weeks * 7 + 7, limit=400), weeks=weeks)
 
@@ -141,7 +180,9 @@ def calendar_subscription() -> dict:
     """How to see published workouts in Apple Calendar: the webcal:// URL to
     subscribe to (remote server with CALENDAR_TOKEN set), or the iPhone option
     (HoodaRun writes events to a "HoodaRun" calendar when it syncs)."""
-    base, token = os.environ.get("PUBLIC_BASE_URL"), os.environ.get("CALENDAR_TOKEN")
+    who = _identity()
+    base = os.environ.get("PUBLIC_BASE_URL")
+    token = who.calendar_token if who is not None else os.environ.get("CALENDAR_TOKEN")
     iphone = ("On the iPhone, turn on HoodaRun › Claude plans › Add to Apple Calendar to "
               "get editable events in a 'HoodaRun' calendar each time it syncs. Use one "
               "option or the other, not both, to avoid duplicate events.")

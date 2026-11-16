@@ -19,6 +19,7 @@ import json
 from datetime import date, timedelta
 
 from .feed import FeedStore
+from .http_auth import scoped_store
 from .ical import build_calendar
 
 MAX_STATUS_BYTES = 256 * 1024
@@ -41,17 +42,28 @@ async def send_calendar(send, body: bytes) -> None:
 class CalendarSubscriptionRoutes:
     """Public-path, secret-URL calendar feed. 404 unless CALENDAR_TOKEN is set."""
 
-    def __init__(self, app, store: FeedStore, token: str | None):
+    def __init__(self, app, store: FeedStore, token: str | None, accounts=None):
         self.app = app
         self.store = store
         self._expected = f"/calendar/{token}.ics".encode() if token else None
+        self._accounts = accounts   # AccountStore: members have their own URL
+
+    def _store_for(self, path: str) -> FeedStore | None:
+        """Whose calendar this secret URL opens, if anyone's."""
+        if self._expected and hmac.compare_digest(path.encode(), self._expected):
+            return self.store
+        if self._accounts and path.endswith(".ics"):
+            user = self._accounts.by_calendar_token(path[len("/calendar/"):-len(".ics")])
+            if user:
+                return self._accounts.store_for(user)
+        return None
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and scope.get("path", "").startswith("/calendar/"):
-            path = scope["path"].encode()
-            if (self._expected and scope.get("method") in ("GET", "HEAD")
-                    and hmac.compare_digest(path, self._expected)):
-                await send_calendar(send, calendar_body(self.store))
+            store = self._store_for(scope["path"]) \
+                if scope.get("method") in ("GET", "HEAD") else None
+            if store is not None:
+                await send_calendar(send, calendar_body(store))
                 return
             await send({"type": "http.response.start", "status": 404,
                         "headers": [(b"content-type", b"text/plain")]})
@@ -68,18 +80,19 @@ class FeedRoutes:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             path, method = scope.get("path", ""), scope.get("method", "GET")
+            store = scoped_store(scope, self.store)   # the signed-in person's feed
             if path == "/feed.json" and method == "GET":
-                await self._json(send, 200, self.store.load())
+                await self._json(send, 200, store.load())
                 return
             if path == "/calendar.ics" and method == "GET":
-                await send_calendar(send, calendar_body(self.store))
+                await send_calendar(send, calendar_body(store))
                 return
             if path == "/status" and method == "POST":
-                await self._status(receive, send)
+                await self._status(store, receive, send)
                 return
         await self.app(scope, receive, send)
 
-    async def _status(self, receive, send):
+    async def _status(self, store, receive, send):
         body = b""
         more = True
         while more:
@@ -96,7 +109,7 @@ class FeedRoutes:
         except ValueError:
             await self._json(send, 400, {"error": "status must be a JSON object"})
             return
-        self.store.write_status(status)
+        store.write_status(status)
         await self._json(send, 200, {"ok": True})
 
     @staticmethod

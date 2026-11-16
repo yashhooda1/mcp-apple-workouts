@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from .apple import parse_spec, step_count
 from .feed import FeedStore
+from .http_auth import scoped_store
 from .nutrition import meal_plan
 from .plans import TrainingPlan, feed_item, preview_plan, push_plan
 from .road import build_road_plan
@@ -268,7 +269,7 @@ class WebRoutes:
             payload = json.loads(body)
             if not isinstance(payload, dict):
                 raise ValueError("Expected a JSON object")
-            result = execute(self.store, payload)
+            result = execute(scoped_store(scope, self.store), payload)
         except (ValueError, TypeError, KeyError, ValidationError) as exc:
             await self._json(send, 400, {"error": str(exc)[:350]})
             return
