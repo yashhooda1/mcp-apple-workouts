@@ -27,7 +27,7 @@ from typing import Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
-from . import completed, reschedule
+from . import completed, reschedule, review
 from . import profile as runner_profile
 from .apple import compile_any, parse_spec, step_count
 from .feed import FeedStore
@@ -142,9 +142,18 @@ def _snapshot_with_source(weeks: int = 8):
             "completed workouts\" in HoodaRun › Claude plans and sync, or tell me your "
             "current weekly mileage (current_weekly_miles) and a recent race time. "
             "Strava is connected for the server owner only.")
+    from .strava import StravaNotConfigured
     from .strava import list_activities as strava_list
 
-    return summarize_fitness(strava_list(days=weeks * 7 + 7, limit=400), weeks=weeks), "strava"
+    try:
+        rows = strava_list(days=weeks * 7 + 7, limit=400)
+    except StravaNotConfigured:
+        raise ValueError(
+            "There isn't enough training history to read yet: HoodaRun has reported "
+            f"{len(runs)} run(s) in this window and Strava isn't connected. Turn on "
+            "\"Share completed workouts\" in HoodaRun › Claude plans and sync, or pass "
+            "current_weekly_miles.")
+    return summarize_fitness(rows, weeks=weeks), "strava"
 
 
 def _measured_weekly_miles() -> Optional[float]:
@@ -362,6 +371,54 @@ def shift_plan(days: int, start_date: Optional[str] = None, end_date: Optional[s
         taper still lands before race day.
     """
     return reschedule.shift(store(), days, start_date, end_date, plan, move_race, dry_run)
+
+
+@mcp.tool()
+def review_week(week_of: Optional[str] = None) -> dict:
+    """How the week went: planned sessions against what the runner actually did.
+
+    Covers the Monday-Sunday week containing `week_of` (YYYY-MM-DD; default
+    this week — for "how did last week go" pass any date in last week). Each
+    planned session is done, cut short (under 80% of its distance), missed,
+    or upcoming, with the real miles, pace and heart rate beside it; runs that
+    weren't in the plan are listed as unplanned. `reading` gives a cautious
+    verdict and, when the week fell well short, a suggested adjust_plan call.
+
+    Needs completed workouts from HoodaRun (see list_completed). It knows a
+    workout happened and how far it went, not whether the reps were on pace —
+    ask the runner how the hard sessions felt.
+    """
+    return review.review_week(store(), week_of)
+
+
+@mcp.tool()
+def adjust_plan(action: str, start_date: Optional[str] = None, days: Optional[int] = None,
+                plan: Optional[str] = None, factor: Optional[float] = None,
+                seconds_per_mile: Optional[int] = None, dry_run: bool = True) -> dict:
+    """Change upcoming sessions because of how training is actually going.
+
+    action:
+      * 'ease'   — coming back from illness, time off or a rough week. Quality
+        sessions become easy runs and every run is shortened by `factor`
+        (default 0.8; 0.4-1.0). Default window: the next 7 days.
+      * 'scale'  — more or less volume: easy and long runs are multiplied by
+        `factor` (0.5-1.15); workouts keep their structure.
+      * 'repace' — quality-session pace targets move by `seconds_per_mile`
+        (positive = slower, up to +60; negative = faster, down to -20), e.g.
+        after a race shows the paces are off. Default window: the rest of the
+        plan.
+
+    Starts at start_date (default today) and covers `days`. `plan` limits it
+    to plans whose name contains that text. dry_run=True (the default) shows
+    exactly what would change; call again with dry_run=False to commit.
+
+    Sessions keep their id, so calendar events and Watch workouts update in
+    place. Strength and race day are never changed. Publishing the plan again
+    restores the generated sessions. Missed runs are not made up: to come back
+    from a gap, ease the next week rather than cramming.
+    """
+    return review.adjust(store(), action, start_date, days, plan, factor,
+                         seconds_per_mile, dry_run)
 
 
 @mcp.tool()

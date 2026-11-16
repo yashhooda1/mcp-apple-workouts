@@ -136,6 +136,11 @@ distance, heart rate and climb from Health — no routes. The server then
 measures your weekly mileage and recent training from your own watch, with no
 Strava connection needed, and uses it when you don't pass a number.
 
+Then the plan can respond: `review_week` lines the week's sessions up against
+what you ran, and `adjust_plan` eases the next week back in after illness or
+a rough patch, scales volume, or shifts workout paces — in place, so calendar
+events and Watch workouts update rather than duplicate.
+
 Plans are laid out on **your** week. Save a profile once
 (`update_runner_profile`: weekly mileage, a recent race, which days you run,
 your long-run and workout days, start times for runs and for strength) and the
@@ -223,6 +228,8 @@ HoodaRun app token; nobody can reach anyone else's. See
 | `move_workout` | write | Move one workout to another day (and optionally time); the calendar event and Watch workout move with it |
 | `swap_workouts` | write | Trade the days of two workouts |
 | `shift_plan` | write | Slide a stretch of the schedule later or earlier; race day stays unless asked (dry-run by default) |
+| `review_week` | read | Planned sessions against what was actually run: done, cut short, missed, unplanned |
+| `adjust_plan` | write | Ease back after time off, scale volume, or shift workout paces for upcoming sessions (dry-run by default) |
 | `create_training_plan` | plan | Publish a plan you wrote — runs and lifts, by date |
 | `create_marathon_plan` | plan | Any marathon, including sub-3, scaled to available fitness |\n| `create_road_race_plan` | plan | Mile, 5K, 10K or half plan for any goal; base tier for runners under 18 mi/week (dry-run by default) |
 | `create_hs_track_plan` | plan | High-school 800 / 1600 / 3200 / 5K blocks |
