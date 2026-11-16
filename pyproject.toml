@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6,<0.17"]
+# icalendar: tests parse the .ics with an independent reader
+dev = ["pytest>=8.0", "ruff>=0.6,<0.17", "icalendar>=5"]
 
 [project.scripts]
 apple-workouts-mcp = "apple_workouts_mcp.server:main"
