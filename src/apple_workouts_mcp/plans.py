@@ -8,6 +8,12 @@ plan in this repo carries two strength sessions a week.
 Idempotent: ids are `uuid5(date|name)`, so re-pushing updates in place. With
 replace=True, items from an earlier push of the *same plan name* that are no
 longer in the plan are removed, so an edited plan never leaves ghosts behind.
+
+Generated plans put the goal (and sometimes the race date) in their name, so
+changing either renames the plan. They therefore also declare a `family` — the
+stable part of the name before " — " — and a re-plan replaces what an earlier
+plan of that family still had scheduled from the new plan's first day onward.
+Sessions before that day are left alone: they are training history.
 """
 from __future__ import annotations
 
@@ -27,10 +33,14 @@ AnySpec = Union[WorkoutSpec, StrengthSpec]
 PlanItem = Tuple[str, AnySpec]  # (ISO date, spec)
 
 
+FAMILY_SEP = " — "
+
+
 @dataclass
 class TrainingPlan:
     name: str
     items: List[PlanItem]
+    family: Optional[str] = None   # e.g. "5K", "HS 1600", "Austin Marathon"
 
     def dates(self) -> List[str]:
         return [d for d, _ in self.items]
@@ -100,8 +110,17 @@ def push_plan(store: FeedStore, plan: TrainingPlan, replace: bool = True,
     pruned: list[dict] = []
     if replace:
         keep = {it["id"] for it in items}
+        first = min((it["date"] for it in items), default="")
+        prefix = plan.family + FAMILY_SEP if plan.family else None
+
+        def superseded(w: dict) -> bool:
+            name = w.get("plan") or ""
+            if name == plan.name:
+                return True
+            return bool(prefix and name.startswith(prefix) and w["date"] >= first)
+
         stale = [w["id"] for w in store.load()["workouts"]
-                 if w.get("plan") == plan.name and w["id"] not in keep]
+                 if w["id"] not in keep and superseded(w)]
         pruned = store.remove(stale)
     stored = store.upsert(items)
     return {
