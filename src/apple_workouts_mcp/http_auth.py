@@ -1,9 +1,19 @@
 """Bearer-token gate for the HTTP transports.
 
-Wraps the FastMCP ASGI app so every HTTP request must present
-`Authorization: Bearer <MCP_AUTH_TOKEN>`. Without it the server returns 401.
-Lifespan/websocket scopes pass through untouched so the MCP session manager
-still starts normally.
+Wraps the FastMCP ASGI app so every HTTP request must present a bearer token.
+Without one the server returns 401. Lifespan/websocket scopes pass through
+untouched so the MCP session manager still starts normally.
+
+Three kinds of token are accepted, and each one names a person:
+
+  * `MCP_AUTH_TOKEN`               -> the owner (HoodaRun, Claude Desktop, API)
+  * an OAuth access token          -> whoever signed in to that connector
+  * a member's HoodaRun app token  -> that member
+
+The gate records who it is in the ASGI scope (`hooda.user`) together with
+that person's feed (`hooda.store`). Everything behind the gate — the MCP
+tools, /feed.json, /status, /api/siri, /api/web — reads the feed from there,
+so no route can reach another person's workouts by construction.
 
 Generate a token with:  openssl rand -hex 32
 """
@@ -13,26 +23,47 @@ import hmac
 import logging
 import os
 
+from .accounts import OWNER
+
 logger = logging.getLogger("apple_workouts_mcp.http_auth")
+
+# ASGI scope keys set by the gate for everything behind it.
+SCOPE_USER = "hooda.user"
+SCOPE_STORE = "hooda.store"
+SCOPE_IDENTITY = "hooda.identity"
+
+
+def scoped_store(scope, default):
+    """The signed-in person's feed, or `default` on a single-owner server."""
+    return scope.get(SCOPE_STORE) or default
 
 
 class BearerAuthMiddleware:
     """Minimal constant-time bearer check as a pure ASGI wrapper."""
 
-    def __init__(self, app, token: str | None, oauth=None):
+    def __init__(self, app, token: str | None, oauth=None, accounts=None):
         self.app = app
         self._expected = f"Bearer {token}" if token else None
         self._oauth = oauth   # OAuthProvider: also accept its access tokens
+        self._accounts = accounts or (oauth.accounts if oauth else None)
         self._challenge = (
             f'Bearer resource_metadata="{oauth.base}/.well-known/oauth-protected-resource"'
             .encode() if oauth else b"Bearer")
 
-    def _allowed(self, provided: str) -> bool:
+    def _who(self, provided: str) -> str | None:
+        """The account id this Authorization header belongs to, or None."""
         if self._expected and provided and hmac.compare_digest(provided, self._expected):
-            return True
-        if self._oauth and provided[:7].lower() == "bearer ":
-            return self._oauth.verify(provided[7:].strip())
-        return False
+            return OWNER
+        if provided[:7].lower() != "bearer ":
+            return None
+        token = provided[7:].strip()
+        if self._oauth:
+            user = self._oauth.verify(token)
+            if user:
+                return user
+        if self._accounts:
+            return self._accounts.by_app_token(token)
+        return None
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -47,9 +78,15 @@ class BearerAuthMiddleware:
             return
         headers = dict(scope.get("headers") or [])
         provided = headers.get(b"authorization", b"").decode()
-        if not self._allowed(provided):
+        user = self._who(provided)
+        if user is None:
             await self._reject(send)
             return
+        if self._accounts:
+            scope = dict(scope)
+            scope[SCOPE_USER] = user
+            scope[SCOPE_STORE] = self._accounts.store_for(user)
+            scope[SCOPE_IDENTITY] = self._accounts.identity(user)
         await self.app(scope, receive, send)
 
     async def _reject(self, send):
@@ -64,9 +101,15 @@ class BearerAuthMiddleware:
 
 def serve_http(mcp, transport: str, host: str, port: int, token: str | None,
                store=None) -> None:
-    """Build the FastMCP HTTP app, add the feed routes, gate it, serve with uvicorn."""
+    """Build the gated app (see build_app) and serve it with uvicorn."""
     import uvicorn
 
+    uvicorn.run(build_app(mcp, transport, host, token, store), host=host, port=port)
+
+
+def build_app(mcp, transport: str, host: str, token: str | None, store=None):
+    """The FastMCP HTTP app with the feed routes, the gate, and the public
+    OAuth / account / calendar routes layered around it."""
     app = (mcp.streamable_http_app() if transport == "streamable-http"
            else mcp.sse_app())
     if store is not None:
@@ -88,28 +131,43 @@ def serve_http(mcp, transport: str, host: str, port: int, token: str | None,
             "Set MCP_AUTH_TOKEN or bind HOST=127.0.0.1 for local development."
         )
 
-    oauth = None
+    oauth = accounts = None
     if token and store is not None:
+        from .accounts import AccountStore
         from .oauth import OAuthProvider
 
-        oauth = OAuthProvider.from_env(store.dir, token)
+        accounts = AccountStore.from_env(store.dir, token)
+        oauth = OAuthProvider.from_env(store.dir, token, accounts=accounts)
 
     if token:
-        app = BearerAuthMiddleware(app, token, oauth=oauth)
+        app = BearerAuthMiddleware(app, token, oauth=oauth, accounts=accounts)
         logger.info("HTTP transport secured with bearer token%s.",
                     " + OAuth (Claude/ChatGPT connectors)" if oauth else "")
         if oauth:
+            from .account_http import AccountRoutes
             from .oauth import OAuthRoutes
 
+            try:
+                from .apple_signin import AppleSignIn
+
+                oauth.apple = AppleSignIn.from_env(oauth.base)
+            except ImportError:   # PyJWT[crypto] not installed
+                logger.warning("Sign in with Apple is configured but PyJWT[crypto] "
+                               "is missing; leaving it off.")
+            logger.info("Accounts: sign-up %s, Sign in with Apple %s.",
+                        "open with invite code" if accounts.signup_open else "closed",
+                        "on" if oauth.apple else "off")
+            app = AccountRoutes(app, oauth, oauth.apple)   # public: sign-up, account, Apple
             app = OAuthRoutes(app, oauth)   # public: discovery, register, sign-in, token
     if store is not None:
         from .feed_http import CalendarSubscriptionRoutes
 
         # Public path, secret URL, read-only: Apple Calendar can't send headers.
-        app = CalendarSubscriptionRoutes(app, store, os.environ.get("CALENDAR_TOKEN"))
+        app = CalendarSubscriptionRoutes(app, store, os.environ.get("CALENDAR_TOKEN"),
+                                         accounts=accounts)
     else:
         logger.warning(
             "MCP_AUTH_TOKEN is not set — the HTTP server is UNAUTHENTICATED and can "
             "write to your workout feed. Set MCP_AUTH_TOKEN before exposing it."
         )
-    uvicorn.run(app, host=host, port=port)
+    return app

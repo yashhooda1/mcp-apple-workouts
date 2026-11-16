@@ -76,11 +76,11 @@ struct MCPSyncSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     .autocorrectionDisabled()
-                SecureField("MCP_AUTH_TOKEN", text: $token)
+                SecureField("Server or app token", text: $token)
                 Button("Save server") {
                     guard let url = URL(string: feedURL), url.scheme == "https",
                           !token.isEmpty else {
-                        message = "Use an https URL and the server's bearer token."
+                        message = "Use an https URL and your token (the server's MCP_AUTH_TOKEN, or the app token from your account page)."
                         return
                     }
                     MCPSyncSettings.saveHTTP(url, token: token)

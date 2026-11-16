@@ -12,8 +12,11 @@ third-party identity provider:
     POST /oauth/authorize                              -> 302 back with ?code=
     POST /oauth/token                                  authorization_code (PKCE S256) | refresh_token
 
-"Sign in" means typing the owner secret (`OAUTH_OWNER_PASSWORD`, default:
-`MCP_AUTH_TOKEN`). Only redirect URIs on allow-listed hosts can register
+"Sign in" means the owner typing the server password (`OAUTH_OWNER_PASSWORD`,
+default `MCP_AUTH_TOKEN`), or a member typing their email and password — or
+using Sign in with Apple when it is configured (accounts.py, apple_signin.py,
+account_http.py). Every code and token records which person it belongs to, so
+each connector only ever sees its own person's feed. Only redirect URIs on allow-listed hosts can register
 (`OAUTH_ALLOWED_REDIRECT_HOSTS`, default Claude + ChatGPT + localhost).
 PKCE S256 is mandatory, codes are single-use, refresh tokens rotate, and only
 SHA-256 hashes of tokens are stored (in `oauth.json` next to the feed — keep
@@ -27,7 +30,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import html
 import json
 import logging
 import os
@@ -39,6 +41,9 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse
 
+from . import pages
+from .accounts import OWNER, AccountError, AccountStore
+
 logger = logging.getLogger("apple_workouts_mcp.oauth")
 
 DEFAULT_REDIRECT_HOSTS = ("claude.ai", "claude.com", "chatgpt.com", "chat.openai.com",
@@ -47,8 +52,6 @@ SCOPE = "workouts"
 CODE_TTL = 300
 ACCESS_TTL = 3600
 REFRESH_TTL = 30 * 24 * 3600
-MAX_FAILURES = 5
-FAILURE_WINDOW = 15 * 60
 MAX_BODY = 64 * 1024
 MAX_CLIENTS = 50
 
@@ -70,25 +73,30 @@ class OAuthError(Exception):
 
 class OAuthProvider:
     def __init__(self, base_url: str, owner_secret: str, state_path: Path,
-                 allowed_hosts: Optional[tuple[str, ...]] = None):
+                 allowed_hosts: Optional[tuple[str, ...]] = None,
+                 accounts: Optional[AccountStore] = None):
         if not owner_secret:
             raise ValueError("OAuth needs OAUTH_OWNER_PASSWORD or MCP_AUTH_TOKEN")
         self.base = base_url.rstrip("/")
-        self._secret = owner_secret
         self.path = Path(state_path)
         self.allowed_hosts = tuple(h.lower() for h in (allowed_hosts or DEFAULT_REDIRECT_HOSTS))
+        # Without an explicit store this is the original single-owner server:
+        # the owner password signs in, and sign-up stays closed.
+        self.accounts = accounts or AccountStore(self.path.parent, owner_secret)
+        self.apple = None   # AppleSignIn, set by serve_http when configured
         self._lock = threading.Lock()
-        self._failures: dict[str, list[float]] = {}
 
     @classmethod
-    def from_env(cls, store_dir: Path, token: Optional[str]) -> Optional["OAuthProvider"]:
+    def from_env(cls, store_dir: Path, token: Optional[str],
+                 accounts: Optional[AccountStore] = None) -> Optional["OAuthProvider"]:
         base = os.environ.get("PUBLIC_BASE_URL")
         if not base:
             return None
         hosts = os.environ.get("OAUTH_ALLOWED_REDIRECT_HOSTS")
         return cls(base, os.environ.get("OAUTH_OWNER_PASSWORD") or token or "",
                    Path(store_dir) / "oauth.json",
-                   tuple(h.strip() for h in hosts.split(",") if h.strip()) if hosts else None)
+                   tuple(h.strip() for h in hosts.split(",") if h.strip()) if hosts else None,
+                   accounts=accounts)
 
     # ------------------------------------------------------------ metadata
     @property
@@ -196,27 +204,30 @@ class OAuthProvider:
             raise OAuthError("invalid_request", "PKCE with S256 is required.")
         return client
 
-    def locked_out(self, ip: str) -> bool:
-        now = time.time()
-        recent = [t for t in self._failures.get(ip, []) if now - t < FAILURE_WINDOW]
-        self._failures[ip] = recent
-        return len(recent) >= MAX_FAILURES
+    def approve(self, p: dict, password: str, ip: str, email: str = "") -> str:
+        """Check the sign-in and return the redirect URL carrying the code.
 
-    def approve(self, p: dict, password: str, ip: str) -> str:
-        """Check the owner secret and return the redirect URL carrying the code."""
+        A blank email is the owner typing the server password; otherwise it is
+        a member's email and password.
+        """
+        self.check_authorize(p)
+        try:
+            who = self.accounts.authenticate(email, password, ip)
+        except AccountError as e:
+            raise OAuthError("access_denied", e.message, e.status)
+        return self.grant(p, who.id)
+
+    def grant(self, p: dict, user_id: str) -> str:
+        """Issue a code for an already-authenticated person (password, sign-up
+        or Sign in with Apple) and return the redirect URL carrying it."""
         client = self.check_authorize(p)
-        if self.locked_out(ip):
-            raise OAuthError("access_denied", "Too many attempts. Try again in 15 minutes.", 429)
-        if not hmac.compare_digest(password.encode(), self._secret.encode()):
-            self._failures.setdefault(ip, []).append(time.time())
-            raise OAuthError("access_denied", "Wrong password.", 401)
-        self._failures.pop(ip, None)
         code = secrets.token_urlsafe(32)
         with self._lock:
             data = self._load()
             data["codes"][_hash(code)] = {
                 "client_id": client["client_id"], "redirect_uri": p["redirect_uri"],
-                "challenge": p["code_challenge"], "exp": time.time() + CODE_TTL}
+                "challenge": p["code_challenge"], "user": user_id,
+                "exp": time.time() + CODE_TTL}
             self._save(data)
         q = {"code": code}
         if p.get("state"):
@@ -236,11 +247,13 @@ class OAuthProvider:
                 raise OAuthError("invalid_client", "bad client credentials", 401)
         return client
 
-    def _issue(self, data: dict, client_id: str) -> dict:
+    def _issue(self, data: dict, client_id: str, user_id: str) -> dict:
         access, refresh = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         now = time.time()
-        data["access"][_hash(access)] = {"client_id": client_id, "exp": now + ACCESS_TTL}
-        data["refresh"][_hash(refresh)] = {"client_id": client_id, "exp": now + REFRESH_TTL}
+        data["access"][_hash(access)] = {"client_id": client_id, "user": user_id,
+                                         "exp": now + ACCESS_TTL}
+        data["refresh"][_hash(refresh)] = {"client_id": client_id, "user": user_id,
+                                           "exp": now + REFRESH_TTL}
         return {"access_token": access, "token_type": "Bearer", "expires_in": ACCESS_TTL,
                 "refresh_token": refresh, "scope": SCOPE}
 
@@ -266,37 +279,29 @@ class OAuthProvider:
                     raise OAuthError("invalid_grant", "refresh token is invalid or expired")
             else:
                 raise OAuthError("unsupported_grant_type", "unsupported grant_type")
-            out = self._issue(data, client["client_id"])
+            # Records written before accounts existed have no "user": the owner.
+            out = self._issue(data, client["client_id"], rec.get("user", OWNER))
             self._save(data)
         return out
 
-    def verify(self, access_token: str) -> bool:
+    def verify(self, access_token: str) -> Optional[str]:
+        """The id of the person this access token belongs to, or None."""
         rec = self._load()["access"].get(_hash(access_token))
-        return bool(rec and rec["exp"] > time.time())
+        if not rec or rec["exp"] <= time.time():
+            return None
+        user = rec.get("user", OWNER)
+        # A removed account's tokens die with it.
+        return user if self.accounts.identity(user) else None
 
 
 # ------------------------------------------------------------------- HTTP
-_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Connect to HoodaRun</title><style>
-body{{font:16px -apple-system,system-ui,sans-serif;background:#0b0d10;color:#e8eaed;
-display:grid;place-items:center;min-height:100vh;margin:0}}
-form{{background:#16191e;padding:28px;border-radius:16px;width:min(360px,90vw)}}
-h1{{font-size:20px;margin:0 0 6px}}p{{color:#9aa0a6;font-size:14px;margin:0 0 18px}}
-input{{width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #333;
-background:#0b0d10;color:inherit;font-size:16px}}
-button{{margin-top:14px;width:100%;padding:12px;border:0;border-radius:10px;
-background:#ff6b2c;color:#fff;font-weight:600;font-size:16px}}.err{{color:#ff8a80}}
-</style></head><body><form method="post" action="/oauth/authorize">
-<h1>Connect {client} to HoodaRun</h1>
-<p>It will be able to read your training and publish workouts to your Apple Watch feed.</p>
-{error}{hidden}
-<input type="password" name="password" placeholder="Server password" autofocus required
-autocomplete="current-password">
-<button type="submit">Allow</button></form></body></html>"""
+AUTH_FIELDS = ("client_id", "redirect_uri", "response_type", "state", "code_challenge",
+               "code_challenge_method", "scope", "resource")
 
-_AUTH_FIELDS = ("client_id", "redirect_uri", "response_type", "state", "code_challenge",
-                "code_challenge_method", "scope", "resource")
+
+def auth_params(source: dict) -> dict:
+    """Just the authorization-request fields, to carry between pages."""
+    return {f: source[f] for f in AUTH_FIELDS if source.get(f)}
 
 
 def _flat(qs: dict) -> dict:
@@ -332,9 +337,10 @@ class OAuthRoutes:
                 return await self._page(send, params)
             if path == "/oauth/authorize" and method == "POST":
                 form = _flat(parse_qs((await self._body(receive)).decode()))
-                ip = (scope.get("client") or ("?",))[0]
+                ip = pages.client_ip(scope)
                 try:
-                    url = self.p.approve(form, form.get("password", ""), ip)
+                    url = self.p.approve(form, form.get("password", ""), ip,
+                                         form.get("email", ""))
                 except OAuthError as e:
                     if e.error == "access_denied":
                         return await self._page(send, form, e.description, e.status)
@@ -374,31 +380,40 @@ class OAuthRoutes:
 
     async def _page(self, send, params: dict, error: str = "", status: int = 200,
                     show_form: bool = True):
-        if show_form:
-            client = self.p.check_authorize(params)   # raises -> shown as an error page
-            hidden = "".join(
-                f'<input type="hidden" name="{f}" value="{html.escape(params[f])}">'
-                for f in _AUTH_FIELDS if params.get(f))
-            name = client["client_name"]
-        else:
-            hidden, name = "", "this app"
-        err = f'<p class="err">{html.escape(error)}</p>' if error else ""
-        page = _PAGE.format(client=html.escape(name), error=err, hidden=hidden)
         if not show_form:
-            page = page.split("<input", 1)[0] + "</form></body></html>"
-        await send({"type": "http.response.start", "status": status, "headers": [
-            (b"content-type", b"text/html; charset=utf-8"), (b"cache-control", b"no-store"),
-            (b"x-frame-options", b"DENY"),
-            (b"content-security-policy",
-             b"default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https:; "
-             b"frame-ancestors 'none'")]})
-        await send({"type": "http.response.body", "body": page.encode()})
+            return await pages.send_page(
+                send, "Connect to HoodaRun",
+                "<h1>Can't connect this app</h1>" + pages.error(error), status)
+        client = self.p.check_authorize(params)   # raises -> shown as an error page
+        carry = auth_params(params)
+        query = pages.esc(urlencode(carry))
+        members = self.p.accounts.signup_open or bool(self.p.accounts.members())
+        body = [
+            f"<h1>Connect {pages.esc(client['client_name'])} to HoodaRun</h1>",
+            "<p>It will be able to read your training and publish workouts to your "
+            "Apple Watch feed.</p>", pages.error(error),
+            '<form method="post" action="/oauth/authorize">', pages.hidden(carry)]
+        if members:
+            body.append(
+                '<label for="email">Email <span>(leave blank if you own this server)'
+                '</span></label><input id="email" type="email" name="email" '
+                f'value="{pages.esc(params.get("email", ""))}" autocomplete="username">'
+                '<label for="pw">Password</label>')
+        body.append(
+            '<input id="pw" type="password" name="password" '
+            f'placeholder="{"Password" if members else "Server password"}" autofocus required '
+            'autocomplete="current-password"><button type="submit">Allow</button></form>')
+        if self.p.apple:
+            body.append('<p class="or">or</p><a class="btn alt" '
+                        f'href="/oauth/apple/start?{query}"> Sign in with Apple</a>')
+        if self.p.accounts.signup_open:
+            body.append(f'<p class="or">New here? <a href="/signup?{query}">'
+                        "Create an account</a> with your invite code.</p>")
+        await pages.send_page(send, "Connect to HoodaRun", "".join(body), status)
 
     @staticmethod
     async def _redirect(send, url: str):
-        await send({"type": "http.response.start", "status": 302,
-                    "headers": [(b"location", url.encode()), (b"cache-control", b"no-store")]})
-        await send({"type": "http.response.body", "body": b""})
+        await pages.redirect(send, url)
 
     @staticmethod
     async def _json(send, code: int, payload: dict):
