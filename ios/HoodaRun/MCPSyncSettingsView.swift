@@ -17,6 +17,7 @@ struct MCPSyncSettingsView: View {
     @State private var sourceLabel = Self.describe(MCPSyncSettings.source())
     @State private var useCloudKit = CloudKitPlanStore.isEnabled
     @State private var useCalendar = MCPCalendarSync.isEnabled
+    @State private var shareCompleted = MCPCompletedSync.isEnabled
 
     var body: some View {
         Form {
@@ -61,6 +62,27 @@ struct MCPSyncSettingsView: View {
             } footer: {
                 Text("Synced workouts appear in a \"HoodaRun\" calendar with their steps and paces. "
                      + "Don't also subscribe to the server's calendar feed, or you'll see doubles.")
+            }
+
+            Section {
+                Toggle("Share completed workouts", isOn: $shareCompleted)
+                    .onChange(of: shareCompleted) { _, on in
+                        Task {
+                            if on, !(await MCPCompletedSync.requestAccess()) {
+                                shareCompleted = false
+                                message = "Health isn't available on this device."
+                                return
+                            }
+                            MCPCompletedSync.isEnabled = on
+                            if on { await runSync() }
+                        }
+                    }
+            } header: {
+                Text("Results")
+            } footer: {
+                Text("Sends each finished workout's time, distance, heart rate and climb from "
+                     + "Health to your plan server, so Claude can review your week and adjust "
+                     + "the plan. No routes are sent. Off by default.")
             }
 
             Section {

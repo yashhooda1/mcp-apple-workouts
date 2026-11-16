@@ -5,6 +5,7 @@ the same `Authorization: Bearer <MCP_AUTH_TOKEN>` as Claude does:
 
     GET  /feed.json   -> workouts.json
     POST /status      <- status.json from the app (max 256 KB)
+    POST /completed   <- finished workouts from Health (see completed.py)
     GET  /calendar.ics -> the feed as an iCalendar (see ical.py)
 
 `CalendarSubscriptionRoutes` sits OUTSIDE the gate and serves
@@ -18,6 +19,7 @@ import hmac
 import json
 from datetime import date, timedelta
 
+from . import completed
 from .feed import FeedStore
 from .http_auth import scoped_store
 from .ical import build_calendar
@@ -90,7 +92,41 @@ class FeedRoutes:
             if path == "/status" and method == "POST":
                 await self._status(store, receive, send)
                 return
+            if path == "/completed" and method == "POST":
+                await self._completed(store, receive, send)
+                return
         await self.app(scope, receive, send)
+
+    async def _read_json(self, receive, send, what: str):
+        """The request body as a dict, or None after answering with the error."""
+        body = b""
+        more = True
+        while more:
+            msg = await receive()
+            body += msg.get("body", b"")
+            more = msg.get("more_body", False)
+            if len(body) > MAX_STATUS_BYTES:
+                await self._json(send, 413, {"error": f"{what} too large"})
+                return None
+        try:
+            data = json.loads(body or b"{}")
+            if not isinstance(data, dict):
+                raise ValueError
+        except ValueError:
+            await self._json(send, 400, {"error": f"{what} must be a JSON object"})
+            return None
+        return data
+
+    async def _completed(self, store, receive, send):
+        """Finished workouts from Health, reported by HoodaRun (completed.py)."""
+        data = await self._read_json(receive, send, "completed workouts")
+        if data is None:
+            return
+        rows = data.get("workouts")
+        if not isinstance(rows, list):
+            await self._json(send, 400, {"error": "expected {\"workouts\": [...]}"})
+            return
+        await self._json(send, 200, completed.record(store, rows))
 
     async def _status(self, store, receive, send):
         body = b""

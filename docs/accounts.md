@@ -72,9 +72,10 @@ not against Apple itself. Try it with your own Services ID before relying on it.
 
 ## Limits worth knowing
 
-- **Strava is the owner's.** One Strava connection per server. Members are
-  refused Strava tools and give their weekly mileage and a recent race time
-  instead.
+- **Strava is the owner's.** One Strava connection per server. Members don't
+  need it: with **Share completed workouts** switched on in HoodaRun, their
+  own watch data drives fitness assessment and plan mileage. Without it they
+  give their weekly mileage and a recent race time instead.
 - **No email is ever sent.** No verification, no "forgot password" link. The
   owner resets a password from the server's shell:
 
