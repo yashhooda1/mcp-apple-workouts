@@ -13,9 +13,10 @@ Claude / ChatGPT ──OAuth──▶ /mcp ──▶ workouts.json ──▶ Hoo
 | `MCP_AUTH_TOKEN` | everything remote | Static bearer for HoodaRun, Claude Desktop, OpenAI API |
 | `PUBLIC_BASE_URL` | Claude/ChatGPT connectors | `https://<host>`, no trailing path. Turns OAuth on |
 | `OAUTH_OWNER_PASSWORD` | connector sign-in | Optional; defaults to `MCP_AUTH_TOKEN` |
+| `SIGNUP_INVITE_CODE` | more than one runner | Optional; opens invite-only sign-up. See [accounts.md](accounts.md) |
 | `OAUTH_ALLOWED_REDIRECT_HOSTS` | locking down clients | Default `claude.ai,claude.com,chatgpt.com,chat.openai.com,localhost,127.0.0.1` |
 | `CALENDAR_TOKEN` | calendar subscription | Separate, read-only secret |
-| `WORKOUT_FEED_DIR` | persistence | Must be a volume: holds `workouts.json`, `status.json`, `oauth.json` |
+| `WORKOUT_FEED_DIR` | persistence | Must be a volume: holds `workouts.json`, `status.json`, `oauth.json`, and with accounts `users.json` and `users/` |
 
 ## Connect Claude
 
@@ -36,8 +37,9 @@ endpoints, registers itself, and opens the same sign-in page.
   from `/mcp` points clients at them via `WWW-Authenticate: resource_metadata=`.
 - `POST /oauth/register` (RFC 7591): only redirect URIs on allow-listed hosts
   (https only, except localhost).
-- `/oauth/authorize`: single-owner password page, 5 wrong attempts → 15 min lockout,
-  not frameable.
+- `/oauth/authorize`: sign-in page (the owner's server password, or a member's
+  email and password — see [accounts.md](accounts.md)), 5 wrong attempts →
+  15 min lockout, not frameable.
 - `/oauth/token`: PKCE S256 required, single-use 5-minute codes, 1-hour access
   tokens, 30-day refresh tokens that rotate on use.
 - Only SHA-256 hashes of codes and tokens are written to `oauth.json` (mode 600).

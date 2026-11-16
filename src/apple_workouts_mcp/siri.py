@@ -16,6 +16,7 @@ import time
 from datetime import date, timedelta
 
 from .feed import FeedStore
+from .http_auth import scoped_store
 from .nutrition import meal_plan
 from .plans import feed_item
 from .texas_races import texas_race_calendar
@@ -244,7 +245,7 @@ class SiriRoutes:
                 break
         try:
             data = json.loads(body)
-            result = dispatch(self.store, data)
+            result = dispatch(scoped_store(scope, self.store), data)
         except (ValueError, TypeError, KeyError) as exc:
             await self._json(send, 400, {"error": str(exc)[:250]})
             return

@@ -10,5 +10,8 @@ restartPolicyType = "ON_FAILURE"
 #   PUBLIC_BASE_URL=https://<your-app>.up.railway.app   (enables OAuth for Claude/ChatGPT)
 #   OAUTH_OWNER_PASSWORD=<long passphrase>  (optional — connector sign-in; default MCP_AUTH_TOKEN)
 #   CALENDAR_TOKEN=<openssl rand -hex 24>   (optional — enables /calendar/<token>.ics)
+#   SIGNUP_INVITE_CODE=<a code you share>   (optional — invite-only accounts, docs/accounts.md)
+#   APPLE_CLIENT_ID / APPLE_TEAM_ID / APPLE_KEY_ID / APPLE_PRIVATE_KEY
+#                                           (optional — Sign in with Apple)
 #   STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET  (optional, for history)
 # Run `apple-workouts-strava-auth` locally, then upload strava_tokens.json to /data.
