@@ -70,12 +70,13 @@ def _check_time(t: Optional[str]) -> Optional[str]:
 
 
 def feed_item(iso_date: str, spec: AnySpec, time: Optional[str] = None,
-              plan: Optional[str] = None) -> dict:
-    """Compile one spec into a feed record."""
+              plan: Optional[str] = None, scope: Optional[str] = None) -> dict:
+    """Compile one spec into a feed record. `scope` keeps one plan's ids apart
+    from another's (see feed.workout_id); one-off workouts have none."""
     iso_date, time = _check_date(iso_date), _check_time(time)
     workout = compile_any(spec)
     return {
-        "id": workout_id(iso_date, spec.name),
+        "id": workout_id(iso_date, spec.name, scope),
         "rev": revision(workout, spec.description, time),
         "date": iso_date,
         "time": time,
@@ -89,7 +90,11 @@ def feed_item(iso_date: str, spec: AnySpec, time: Optional[str] = None,
 
 
 def build_items(plan: TrainingPlan, time: Optional[str] = None) -> List[dict]:
-    items = [feed_item(d, s, time=time, plan=plan.name) for d, s in plan.items]
+    # The family is stable across goal and date changes, so a re-plan updates
+    # same-named sessions in place; hand-written plans are scoped by name.
+    scope = plan.family or plan.name
+    items = [feed_item(d, s, time=time, plan=plan.name, scope=scope)
+             for d, s in plan.items]
     seen: dict[str, str] = {}
     for it in items:
         if it["id"] in seen:
@@ -107,10 +112,27 @@ def preview_plan(plan: TrainingPlan, time: Optional[str] = None) -> List[dict]:
     ]
 
 
+def _adopt_legacy_ids(store: FeedStore, plan: TrainingPlan, items: List[dict]) -> None:
+    """Feeds written before ids were scoped use `uuid5(date|name)`. When this
+    plan's session is already in the feed under that old id, keep using it, so
+    upgrading doesn't recreate every calendar event and Watch workout (or lose
+    a move) the first time a plan is published again."""
+    existing = {w["id"]: w for w in store.load()["workouts"]}
+    prefix = plan.family + FAMILY_SEP if plan.family else None
+    for it in items:
+        if it["id"] in existing:
+            continue
+        legacy = existing.get(workout_id(it["date"], it["name"]))
+        owner = (legacy or {}).get("plan") or ""
+        if legacy and (owner == plan.name or (prefix and owner.startswith(prefix))):
+            it["id"] = legacy["id"]
+
+
 def push_plan(store: FeedStore, plan: TrainingPlan, replace: bool = True,
               time: Optional[str] = None) -> dict:
     """Publish every item to the feed; prune stale items of the same plan."""
     items = build_items(plan, time)
+    _adopt_legacy_ids(store, plan, items)
     pruned: list[dict] = []
     if replace:
         keep = {it["id"] for it in items}

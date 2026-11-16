@@ -143,3 +143,57 @@ def test_feed_routes(store):
     assert code == 400
     asyncio.run(_call(app, "POST", "/mcp"))
     assert fallthrough == ["/mcp"]
+
+
+# ------------------------------------------------------------ ids across plans
+def test_one_off_ids_are_unchanged_and_plan_ids_are_scoped():
+    # pinned: existing feeds and HoodaRun's bookkeeping depend on this value
+    assert workout_id("2026-10-27", "Easy 6mi") == "725707F5-1FB9-5591-9170-CE433D20B4E7"
+    a = workout_id("2026-10-27", "Easy 6mi", "5K")
+    assert a != workout_id("2026-10-27", "Easy 6mi") != workout_id("2026-10-27", "Easy 6mi", "10K")
+    assert a == workout_id("2026-10-27", "Easy 6mi", "5K") != workout_id("2026-10-27", "Easy 6mi", "10K")
+
+
+def test_two_plans_with_the_same_session_on_the_same_day_both_survive(tmp_path):
+    from apple_workouts_mcp.plans import TrainingPlan, push_plan
+    from apple_workouts_mcp.workouts import easy
+
+    store = FeedStore(tmp_path)
+    a = TrainingPlan("Plan A", [("2026-12-01", easy("Easy 4mi", 4)),
+                                ("2026-12-02", easy("A only", 4))])
+    b = TrainingPlan("Plan B", [("2026-12-01", easy("Easy 4mi", 4))])
+    push_plan(store, a)
+    push_plan(store, b)
+    rows = store.load()["workouts"]
+    assert sorted(w["plan"] for w in rows) == ["Plan A", "Plan A", "Plan B"]
+    assert len({w["id"] for w in rows}) == 3
+    push_plan(store, a)                                   # still idempotent per plan
+    assert len(store.load()["workouts"]) == 3
+
+
+def test_a_feed_written_with_the_old_ids_is_not_churned_on_upgrade(tmp_path):
+    import json
+
+    from apple_workouts_mcp.plans import push_plan
+    from apple_workouts_mcp.road import build_road_plan
+
+    store = FeedStore(tmp_path)
+    plan, _ = build_road_plan("5k", goal_time="21:00", weeks=8, start_date="2026-11-16",
+                              current_weekly_miles=25)
+    push_plan(store, plan)
+    data = json.loads(store.feed_path.read_text())
+    for w in data["workouts"]:                            # rewrite as the old scheme wrote it
+        w["id"] = workout_id(w["date"], w["name"])
+    store.feed_path.write_text(json.dumps(data))
+    old = {w["id"]: w["rev"] for w in data["workouts"]}
+
+    out = push_plan(store, plan)
+    after = {w["id"]: w["rev"] for w in store.load()["workouts"]}
+    assert after == old and out["removed_from_previous_push"] == []
+
+    # a re-plan with a new goal still recognises the old-id sessions as its own
+    faster, _ = build_road_plan("5k", goal_time="20:30", weeks=8, start_date="2026-11-16",
+                                current_weekly_miles=25)
+    push_plan(store, faster)
+    rows = store.load()["workouts"]
+    assert {w["plan"] for w in rows} == {faster.name} and len(rows) == len(faster.items)

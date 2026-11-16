@@ -327,6 +327,5 @@ def test_replanning_keeps_history_and_other_events(tmp_path):
     old = [w for w in feed if w["plan"] == first.name]
     # the first block's sessions before the new block starts are history: kept
     assert old and all(w["date"] < "2026-12-14" for w in old)
-    # a different event's plan loses nothing to a 5K re-plan (ids are
-    # date|name, so an identically named session may change owner, not vanish)
-    assert half_ids <= {w["id"] for w in feed}
+    # a different event's plan is not touched by a 5K re-plan
+    assert half_ids == {w["id"] for w in feed if w["plan"] == half.name}

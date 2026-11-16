@@ -14,9 +14,12 @@ Where the feed lives (`WORKOUT_FEED_DIR`):
     app pulls `GET /feed.json` / posts `POST /status` behind the same bearer
     token as `/mcp` (see `feed_http.py`).
 
-Ids are deterministic (`uuid5(date|name)`), so re-pushing a plan updates in
-place instead of duplicating, and each item carries a content `rev` so the app
-reschedules only what actually changed.
+Ids are deterministic, so re-pushing a plan updates in place instead of
+duplicating, and each item carries a content `rev` so the app reschedules only
+what actually changed. A one-off workout's id is `uuid5(date|name)`; a plan
+session's is `uuid5(scope|date|name)`, where the scope is the plan's family
+(or its name), so two plans that both have an "Easy 4mi" on the same day are
+two workouts rather than one being silently replaced by the other.
 """
 from __future__ import annotations
 
@@ -47,8 +50,10 @@ def default_dir() -> Path:
     return Path.home() / ".hooda-workouts"
 
 
-def workout_id(date: str, name: str) -> str:
-    return str(uuid.uuid5(_NS, f"{date}|{name}")).upper()
+def workout_id(date: str, name: str, scope: Optional[str] = None) -> str:
+    """`scope` separates plans from each other; None is a one-off workout."""
+    key = f"{scope}|{date}|{name}" if scope else f"{date}|{name}"
+    return str(uuid.uuid5(_NS, key)).upper()
 
 
 def _now() -> str:
