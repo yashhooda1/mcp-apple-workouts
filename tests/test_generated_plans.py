@@ -284,3 +284,49 @@ def test_random_race_can_drive_a_plan():
     )
     assert plan.items[-1][0] == race["date"]
     assert report["assessment"]["weeks_available"] >= 19
+
+
+# ----------------------------------------------------------------- re-planning
+def test_replanning_a_road_race_replaces_the_earlier_plan(tmp_path):
+    """Changing weeks or goal renames the plan; the old one must not linger."""
+    from apple_workouts_mcp.feed import FeedStore
+    from apple_workouts_mcp.plans import push_plan
+    from apple_workouts_mcp.road import build_road_plan
+
+    store = FeedStore(tmp_path)
+    kw = dict(distance="5k", start_date="2026-11-16", current_weekly_miles=25)
+    long, _ = build_road_plan(goal_time="21:00", weeks=10, **kw)
+    short, _ = build_road_plan(goal_time="20:30", weeks=8, **kw)
+    assert long.name != short.name and long.family == short.family == "5K"
+
+    push_plan(store, long)
+    out = push_plan(store, short)
+    feed = store.load()["workouts"]
+    assert out["removed_from_previous_push"]
+    assert {w["plan"] for w in feed} == {short.name}
+    assert len(feed) == out["published"]
+
+
+def test_replanning_keeps_history_and_other_events(tmp_path):
+    from apple_workouts_mcp.feed import FeedStore
+    from apple_workouts_mcp.plans import push_plan
+    from apple_workouts_mcp.road import build_road_plan
+
+    store = FeedStore(tmp_path)
+    first, _ = build_road_plan(distance="5k", goal_time="21:00", weeks=8,
+                               start_date="2026-11-16", current_weekly_miles=25)
+    half, _ = build_road_plan(distance="half", goal_time="1:35:00", weeks=8,
+                              start_date="2026-11-16", current_weekly_miles=30)
+    later, _ = build_road_plan(distance="5k", goal_time="20:30", weeks=8,
+                               start_date="2026-12-14", current_weekly_miles=25)
+    push_plan(store, first)
+    push_plan(store, half)
+    half_ids = {w["id"] for w in store.load()["workouts"] if w["plan"] == half.name}
+    push_plan(store, later)
+    feed = store.load()["workouts"]
+    old = [w for w in feed if w["plan"] == first.name]
+    # the first block's sessions before the new block starts are history: kept
+    assert old and all(w["date"] < "2026-12-14" for w in old)
+    # a different event's plan loses nothing to a 5K re-plan (ids are
+    # date|name, so an identically named session may change owner, not vanish)
+    assert half_ids <= {w["id"] for w in feed}

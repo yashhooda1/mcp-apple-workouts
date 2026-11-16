@@ -29,7 +29,33 @@ from .plans import TrainingPlan, feed_item, preview_plan, push_plan
 from .strength import StrengthSpec
 from .workouts import WorkoutSpec
 
-mcp = FastMCP("apple-workouts-mcp")
+
+def _transport_security():
+    """Host-header policy for the HTTP transports.
+
+    FastMCP defaults to DNS-rebinding protection that only accepts
+    `Host: localhost/127.0.0.1`, which is right for a server on a laptop and
+    answers every request to a hosted one (`<app>.up.railway.app`) with
+    `421 Invalid Host header` — before the bearer/OAuth gate's caller ever
+    reaches a tool. A deployed server sits behind that gate and a TLS proxy,
+    so the check is switched off there. Local stdio/loopback use keeps the
+    SDK default.
+    """
+    if os.environ.get("TRANSPORT", "stdio") not in ("sse", "streamable-http"):
+        return None
+    loopback = os.environ.get("HOST", "0.0.0.0") in ("127.0.0.1", "localhost", "::1")
+    if loopback and not os.environ.get("PUBLIC_BASE_URL"):
+        return None
+    try:
+        from mcp.server.transport_security import TransportSecuritySettings
+    except ImportError:   # SDK older than the host check
+        return None
+    return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+
+
+_security = _transport_security()
+mcp = FastMCP("apple-workouts-mcp",
+              **({"transport_security": _security} if _security else {}))
 
 
 def store() -> FeedStore:

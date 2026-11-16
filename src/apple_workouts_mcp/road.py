@@ -250,7 +250,8 @@ def build_road_plan(
                                     race_week=race_week, down_week=down),
         })
     name = f"{distance.upper()} — {goal_time} build to {race.isoformat()}"
-    plan = TrainingPlan(name=name, items=sorted(items, key=lambda x: x[0]))
+    plan = TrainingPlan(name=name, items=sorted(items, key=lambda x: x[0]),
+                        family=distance.upper())
     report = {
         "race": {"distance": distance, "date": race.isoformat()},
         "goal_time": goal_time, "weeks": weeks, "days_per_week": days_per_week,

@@ -509,6 +509,7 @@ def build_track_plan(
     plan = TrainingPlan(
         name=f"HS {event} — sub-{goal_time} block",
         items=sorted(items, key=lambda it: it[0]),
+        family=f"HS {event}",
     )
     report = {
         "event": event,
