@@ -45,6 +45,9 @@ class TrainingPlan:
     name: str
     items: List[PlanItem]
     family: Optional[str] = None   # e.g. "5K", "HS 1600", "Austin Marathon"
+    # The generator's weekday shape, {"long": 6, "quality": [1, 3]} (Mon=0), so
+    # profile.arrange_week can re-lay it onto the runner's own days.
+    layout: Optional[dict] = None
 
     def dates(self) -> List[str]:
         return [d for d, _ in self.items]
@@ -89,11 +92,15 @@ def feed_item(iso_date: str, spec: AnySpec, time: Optional[str] = None,
     }
 
 
-def build_items(plan: TrainingPlan, time: Optional[str] = None) -> List[dict]:
+def build_items(plan: TrainingPlan, time: Optional[str] = None,
+                strength_time: Optional[str] = None) -> List[dict]:
+    """`strength_time`, when given, is the start time for strength sessions."""
     # The family is stable across goal and date changes, so a re-plan updates
     # same-named sessions in place; hand-written plans are scoped by name.
     scope = plan.family or plan.name
-    items = [feed_item(d, s, time=time, plan=plan.name, scope=scope)
+    items = [feed_item(d, s, plan=plan.name, scope=scope,
+                       time=strength_time if strength_time and sport_of(s) == "strength"
+                       else time)
              for d, s in plan.items]
     seen: dict[str, str] = {}
     for it in items:
@@ -103,12 +110,13 @@ def build_items(plan: TrainingPlan, time: Optional[str] = None) -> List[dict]:
     return items
 
 
-def preview_plan(plan: TrainingPlan, time: Optional[str] = None) -> List[dict]:
+def preview_plan(plan: TrainingPlan, time: Optional[str] = None,
+                 strength_time: Optional[str] = None) -> List[dict]:
     """Compile (but don't publish) every workout; useful for dry runs/tests."""
     return [
         {"date": it["date"], "name": it["name"], "sport": it["sport"],
          "blocks": len(it["workout"]["blocks"]), "steps": step_count(it["workout"])}
-        for it in build_items(plan, time)
+        for it in build_items(plan, time, strength_time)
     ]
 
 
@@ -129,9 +137,9 @@ def _adopt_legacy_ids(store: FeedStore, plan: TrainingPlan, items: List[dict]) -
 
 
 def push_plan(store: FeedStore, plan: TrainingPlan, replace: bool = True,
-              time: Optional[str] = None) -> dict:
+              time: Optional[str] = None, strength_time: Optional[str] = None) -> dict:
     """Publish every item to the feed; prune stale items of the same plan."""
-    items = build_items(plan, time)
+    items = build_items(plan, time, strength_time)
     _adopt_legacy_ids(store, plan, items)
     pruned: list[dict] = []
     if replace:
