@@ -70,3 +70,12 @@ def test_local_stdio_keeps_the_sdk_default(monkeypatch):
 
     monkeypatch.delenv("TRANSPORT", raising=False)
     assert server._transport_security() is None
+
+
+def test_healthz_is_public_and_says_nothing():
+    from apple_workouts_mcp.http_auth import HealthRoute
+
+    client = TestClient(HealthRoute(BearerAuthMiddleware(_inner(), TOKEN)))
+    r = client.get("/healthz")
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    assert client.get("/mcp").status_code == 401          # everything else still gated
